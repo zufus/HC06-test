@@ -61,6 +61,7 @@ public class MainActivity extends AppCompatActivity {
         textSensorWing = findViewById(R.id.textSensorWing);
         layout = findViewById(R.id.layout);
 
+        //TODO Recode the Handler system
         h = new Handler() {
             public void handleMessage(android.os.Message msg) {
                 switch (msg.what) {
@@ -69,6 +70,7 @@ public class MainActivity extends AppCompatActivity {
                         String strEleIncom = new String(readElevatorBuf, 0, msg.arg1);
                         Log.d(TAG, "Received Elevator Message");
                         textSensorElevator.setText(strEleIncom);
+                        //textSensorElevator.setText(processData(readElevatorBuf));
                         break;
                     case RECEIVE_WING_MESSAGE:
                         byte[] readWingBuf = (byte[]) msg.obj;
@@ -146,12 +148,16 @@ public class MainActivity extends AppCompatActivity {
         super.onPause();
 
         Log.d(TAG, "...In onPause()...");
-        Log.d(TAG, "...closing Elevator Socket");
-        mConnectedThreadElevator.cancel();
 
-        Log.d(TAG, "...closing Wing Socket");
-        mConnectedThreadWing.cancel();
+        if (mConnectedThreadElevator != null){
+            Log.d(TAG, "...closing Elevator Socket");
+            mConnectedThreadElevator.cancel();
+        }
 
+        if (mConnectedThreadWing != null) {
+            Log.d(TAG, "...closing Wing Socket");
+            mConnectedThreadWing.cancel();
+        }
     }
 
     private void checkBTState() {
@@ -181,13 +187,13 @@ public class MainActivity extends AppCompatActivity {
         private final OutputStream mmOutStream;
         private final int MESSAGE;
         private BluetoothSocket btSocket = null;
-        private String location;
+        private String position;
 
-        public ConnectedThread(BluetoothDevice device, int message, String position) {
+        public ConnectedThread(BluetoothDevice device, int message, String p) {
             InputStream tmpIn = null;
             OutputStream tmpOut = null;
             MESSAGE = message;
-            location = position;
+            position = p;
 
             //Create Bluetooth Socket
 
@@ -238,7 +244,7 @@ public class MainActivity extends AppCompatActivity {
             // Keep listening to the InputStream until an exception occurs
             while (true) {
                 try {
-                    Log.d(TAG, "in ConnectedThread, " + MESSAGE + ", reading buffer ");
+                    //Log.d(TAG, "in ConnectedThread, " + MESSAGE + ", reading buffer ");
                     // Read from the InputStream
                     bytes = mmInStream.read(buffer);        // Get number of bytes and message in "buffer"
                     //Log.d(TAG, "Bytes Read: " + bytes);
@@ -264,12 +270,18 @@ public class MainActivity extends AppCompatActivity {
             try {
                 btSocket.close();
             } catch (IOException e2) {
-                errorExit("From onPause() and failed to close " + location + " socket." + e2.getMessage() + ".");
+                errorExit("From onPause() and failed to close " + position + " socket." + e2.getMessage() + ".");
             }
         }
+
+
     }
 
-
+    static {
+       System.loadLibrary("hc06_test");
+    }
+    public native String stringFromJNI();
+    public native String processData(byte [] data);
 }
 
 
