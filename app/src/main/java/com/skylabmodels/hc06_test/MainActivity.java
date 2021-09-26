@@ -8,8 +8,6 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothSocket;
 import android.bluetooth.BluetoothDevice;
 import android.content.Intent;
-import android.graphics.Color;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
@@ -26,7 +24,7 @@ import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity {
 
-    Button buttonCalibrate, buttonPollRate;
+    Button buttonCalibrate, buttonPollRate, buttonConnectElevator, buttonConnectWing;
     TextView textSensorElevator, textSensorWing;
     ConstraintLayout layout;
     Handler h;
@@ -35,14 +33,9 @@ public class MainActivity extends AppCompatActivity {
     final int RECEIVE_ELEVATOR_MESSAGE = 1;        // Status  for Handler
     final int RECEIVE_WING_MESSAGE = 2;
     private BluetoothAdapter btAdapter = null;
-    private BluetoothSocket btSocketElevator = null;
-    private BluetoothSocket btSocketWing = null;
 
-
-    private final StringBuilder sb = new StringBuilder();
-    private static int flag = 0;
-
-    private ConnectedThread mConnectedThreadWing, mConnectedThreadElevator;
+    private ConnectedThread mConnectedThreadWing;
+    private ConnectedThread mConnectedThreadElevator;
 
     // SPP UUID service
     private static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
@@ -60,6 +53,9 @@ public class MainActivity extends AppCompatActivity {
         buttonCalibrate = findViewById(R.id.buttonCalibrate);
 
         buttonPollRate = findViewById(R.id.buttonPollRate);
+
+        buttonConnectElevator = findViewById(R.id.buttonConnectElevator);
+        buttonConnectWing = findViewById(R.id.buttonConnectWing);
 
         textSensorElevator = findViewById(R.id.textSensorElevator);
         textSensorWing = findViewById(R.id.textSensorWing);
@@ -102,104 +98,46 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        buttonConnectWing.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                connectDevice(btAdapter.getRemoteDevice(addressSensorWing),
+                        RECEIVE_WING_MESSAGE, "Wing");
+            }
+        });
+
+        buttonConnectElevator.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+                connectDevice(btAdapter.getRemoteDevice(addressSensorElevator),
+                        RECEIVE_ELEVATOR_MESSAGE, "Elevator");
+            }
+        });
+
     }
 
     private BluetoothSocket createBluetoothSocket(BluetoothDevice device) throws IOException {
-        if (Build.VERSION.SDK_INT >= 10) {
-            try {
-                final Method m = device.getClass().getMethod("createInsecureRfcommSocketToServiceRecord", new Class[]{UUID.class});
-                return (BluetoothSocket) m.invoke(device, MY_UUID);
-            } catch (Exception e) {
-                Log.e(TAG, "Could not create Insecure RFComm Connection", e);
-            }
+        try {
+            final Method m = device.getClass().getMethod("createInsecureRfcommSocketToServiceRecord", new Class[]{UUID.class});
+            return (BluetoothSocket) m.invoke(device, MY_UUID);
+        } catch (Exception e) {
+            Log.e(TAG, "Could not create Insecure RFComm Connection", e);
         }
         return device.createRfcommSocketToServiceRecord(MY_UUID);
+    }
+
+
+    public void connectDevice(BluetoothDevice device, int m, String s) {
+        Log.d(TAG, "...onResume - try connect to " + s);
+        mConnectedThreadElevator = new ConnectedThread(device, m, s);
+        mConnectedThreadElevator.start();
+
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        Log.d(TAG, "...onResume - try connect to Elevator");
-
-        // Set up a pointer to the remote node using it's address.
-        BluetoothDevice deviceElevator = btAdapter.getRemoteDevice(addressSensorElevator);
-
-        // Two things are needed to make a connection:
-        //   A MAC address, which we got above.
-        //   A Service ID or UUID.  In this case we are using the
-        //     UUID for SPP.
-
-        try {
-            btSocketElevator = createBluetoothSocket(deviceElevator);
-        } catch (IOException e) {
-            errorExit("Fatal Error", "In onResume() and socket create failed: " + e.getMessage() + ".");
-        }
-
-        // Discovery is resource intensive.  Make sure it isn't going on
-        // when you attempt to connect and pass your message.
-        btAdapter.cancelDiscovery();
-
-        // Establish the connection.  This will block until it connects.
-        Log.d(TAG, "...Connecting to Elevator...");
-        try {
-            btSocketElevator.connect();
-            Log.d(TAG, "....Connection ok...");
-            Toast.makeText(getBaseContext(), "Connected", Toast.LENGTH_LONG).show();
-        } catch (IOException e) {
-            try {
-                btSocketElevator.close();
-            } catch (IOException e2) {
-                errorExit("Fatal Error", "In onResume() and unable to close socket during connection failure" + e2.getMessage() + ".");
-            }
-        }
-
-        // Create a data stream so we can talk to server.
-        Log.d(TAG, "...Create Elevator Socket...");
-
-        mConnectedThreadElevator = new ConnectedThread(btSocketElevator, RECEIVE_ELEVATOR_MESSAGE);
-        mConnectedThreadElevator.start();
 
 
-        Log.d(TAG, "...onResume - try connect to Wing");
 
-
-        // Set up a pointer to the remote node using it's address.
-        BluetoothDevice deviceWing = btAdapter.getRemoteDevice(addressSensorWing);
-
-        // Two things are needed to make a connection:
-        //   A MAC address, which we got above.
-        //   A Service ID or UUID.  In this case we are using the
-        //     UUID for SPP.
-
-        try {
-            btSocketWing = createBluetoothSocket(deviceWing);
-        } catch (IOException e) {
-            errorExit("Fatal Error", "In onResume() and socket create failed: " + e.getMessage() + ".");
-        }
-
-        // Discovery is resource intensive.  Make sure it isn't going on
-        // when you attempt to connect and pass your message.
-        btAdapter.cancelDiscovery();
-
-        // Establish the connection.  This will block until it connects.
-        Log.d(TAG, "...Connecting...");
-        try {
-            btSocketWing.connect();
-            Log.d(TAG, ".... Wing Connection ok...");
-            Toast.makeText(getBaseContext(), "Connected to Wing", Toast.LENGTH_LONG).show();
-        } catch (IOException e) {
-            try {
-                btSocketWing.close();
-            } catch (IOException e2) {
-                errorExit("Fatal Error", "In onResume() and unable to close socket during connection failure" + e2.getMessage() + ".");
-            }
-        }
-
-        // Create a data stream so we can talk to server.
-        Log.d(TAG, "...Create Wing Socket...");
-
-        mConnectedThreadWing = new ConnectedThread(btSocketWing, RECEIVE_WING_MESSAGE);
-        mConnectedThreadWing.start();
 
     }
 
@@ -208,21 +146,19 @@ public class MainActivity extends AppCompatActivity {
         super.onPause();
 
         Log.d(TAG, "...In onPause()...");
+        Log.d(TAG, "...closing Elevator Socket");
+        mConnectedThreadElevator.cancel();
 
-        try     {
-            btSocketElevator.close();
-        } catch (IOException e2) {
-            errorExit("Fatal Error", "In onPause() and failed to close socket." + e2.getMessage() + ".");
-        }
+        Log.d(TAG, "...closing Wing Socket");
+        mConnectedThreadWing.cancel();
+
     }
-
-
 
     private void checkBTState() {
         // Check for Bluetooth support and then check to make sure it is turned on
         // Emulator doesn't support Bluetooth and will return null
         if(btAdapter==null) {
-            errorExit("Fatal Error", "Bluetooth not support");
+            errorExit("Bluetooth not support");
         } else {
             if (btAdapter.isEnabled()) {
                 Log.d(TAG, "...Bluetooth ON...");
@@ -234,27 +170,62 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void errorExit(String title, String message){
-        Toast.makeText(getBaseContext(), title + " - " + message, Toast.LENGTH_LONG).show();
+    private void errorExit(String message){
+        Toast.makeText(getBaseContext(), "Fatal Error" + " - " + message, Toast.LENGTH_LONG).show();
         finish();
     }
+
 
     private class ConnectedThread extends Thread {
         private final InputStream mmInStream;
         private final OutputStream mmOutStream;
         private final int MESSAGE;
+        private BluetoothSocket btSocket = null;
+        private String location;
 
-        public ConnectedThread(BluetoothSocket socket, int message) {
+        public ConnectedThread(BluetoothDevice device, int message, String position) {
             InputStream tmpIn = null;
             OutputStream tmpOut = null;
             MESSAGE = message;
+            location = position;
+
+            //Create Bluetooth Socket
+
+            try {
+                btSocket = createBluetoothSocket(device);
+            } catch (IOException e) {
+                errorExit("In onResume() and socket create failed: " + e.getMessage() + ".");
+            }
+
+            // Discovery is resource intensive.  Make sure it isn't going on
+            // when you attempt to connect and pass your message.
+            btAdapter.cancelDiscovery();
+
+            // Establish the connection.  This will block until it connects.
+            Log.d(TAG, "...Connecting...");
+            try {
+                btSocket.connect();
+                Log.d(TAG, ".... Wing Connection ok...");
+                Toast.makeText(getBaseContext(), "Connected to" + position, Toast.LENGTH_LONG).show();
+            } catch (IOException e) {
+                try {
+                    btSocket.close();
+                } catch (IOException e2) {
+                    errorExit("In onResume() and unable to close socket during connection failure" + e2.getMessage() + ".");
+                }
+            }
+
+            // Create a data stream so we can talk to server.
+            Log.d(TAG, "...Create " + position + " Socket...");
 
             // Get the input and output streams, using temp objects because
             // member streams are final
             try {
-                tmpIn = socket.getInputStream();
-                tmpOut = socket.getOutputStream();
-            } catch (IOException e) { }
+                tmpIn = btSocket.getInputStream();
+                tmpOut = btSocket.getOutputStream();
+            } catch (IOException e) {
+                errorExit("In ConnectedThread()" + e.getMessage() + ".");
+            }
 
             mmInStream = tmpIn;
             mmOutStream = tmpOut;
@@ -267,6 +238,7 @@ public class MainActivity extends AppCompatActivity {
             // Keep listening to the InputStream until an exception occurs
             while (true) {
                 try {
+                    Log.d(TAG, "in ConnectedThread, " + MESSAGE + ", reading buffer ");
                     // Read from the InputStream
                     bytes = mmInStream.read(buffer);        // Get number of bytes and message in "buffer"
                     //Log.d(TAG, "Bytes Read: " + bytes);
@@ -287,7 +259,16 @@ public class MainActivity extends AppCompatActivity {
                 Log.d(TAG, "...Error data send: " + e.getMessage() + "...");
             }
         }
+
+        public void cancel () {
+            try {
+                btSocket.close();
+            } catch (IOException e2) {
+                errorExit("From onPause() and failed to close " + location + " socket." + e2.getMessage() + ".");
+            }
+        }
     }
+
 
 }
 
