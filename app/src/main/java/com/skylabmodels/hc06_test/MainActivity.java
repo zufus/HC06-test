@@ -1,30 +1,30 @@
 package com.skylabmodels.hc06_test;
 
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.constraintlayout.widget.ConstraintLayout;
-
+import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
-//import android.bluetooth.BluetoothGattDescriptor;
-import android.bluetooth.BluetoothSocket;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothSocket;
 import android.content.Intent;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
+import android.os.Looper;
+
 import android.util.Log;
-import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.File;
-import java.io.FileOutputStream;
+import androidx.activity.result.ActivityResultLauncher;
+
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.constraintlayout.widget.ConstraintLayout;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.util.Arrays;
-import java.util.Locale;
 import java.util.UUID;
 
 
@@ -35,7 +35,6 @@ public class MainActivity extends AppCompatActivity {
     ConstraintLayout layout;
     Handler h;
 
-    private boolean isFolderCreated;
     private static final String TAG = "bluetooth2";
     final int RECEIVE_ELEVATOR_MESSAGE = 1;        // Status  for Handler
     final int RECEIVE_WING_MESSAGE = 2;
@@ -68,65 +67,42 @@ public class MainActivity extends AppCompatActivity {
         textSensorWing = findViewById(R.id.textSensorWing);
         layout = findViewById(R.id.layout);
 
-        //TODO Recode the Handler system
-        h = new Handler() {
-            public void handleMessage(android.os.Message msg) {
-                switch (msg.what) {
-                    case RECEIVE_ELEVATOR_MESSAGE:
-                        byte[] readElevatorBuf = (byte[]) msg.obj;
-                        String strEleIncom = new String(readElevatorBuf, 0, msg.arg1);
-                        //Log.d(TAG, "Received Elevator Message: " + strEleIncom);
-                        //textSensorElevator.setText(strEleIncom);
-                        //processDataHere(readElevatorBuf);
-                        processBuffer(readElevatorBuf, textSensorElevator);
-                        break;
-                    case RECEIVE_WING_MESSAGE:
-                        byte[] readWingBuf = (byte[]) msg.obj;
-                        String strWingIncom = new String(readWingBuf, 0, msg.arg1);
-                        //Log.d(TAG, "Received Wing Message");
-                        processBuffer(readWingBuf, textSensorWing);
-                        break;
-                    default:
-                        break;
-                }
-            }
+        h = new Handler(Looper.getMainLooper(), msg -> {
+            switch (msg.what) {
+                case RECEIVE_ELEVATOR_MESSAGE:
+                    byte[] readElevatorBuf = (byte[]) msg.obj;
 
-        };
+                    processBuffer(readElevatorBuf, textSensorElevator);
+                    break;
+                case RECEIVE_WING_MESSAGE:
+                    byte[] readWingBuf = (byte[]) msg.obj;
+
+                    processBuffer(readWingBuf, textSensorWing);
+                    break;
+                default:
+                    break;
+            }
+            return true;
+        });
 
         btAdapter = BluetoothAdapter.getDefaultAdapter();       // get Bluetooth adapter
         checkBTState();
 
-        buttonCalibrate.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                Toast.makeText(getBaseContext(), "Wait for calibration", Toast.LENGTH_SHORT).show();
-            }
-        });
+        buttonCalibrate.setOnClickListener(v -> Toast.makeText(getBaseContext(), "Wait for calibration", Toast.LENGTH_SHORT).show());
 
-        buttonPollRate.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                Toast.makeText(getBaseContext(), "TODO: change poll rate", Toast.LENGTH_SHORT).show();
-            }
-        });
+        buttonPollRate.setOnClickListener(v -> Toast.makeText(getBaseContext(), "TODO: change poll rate", Toast.LENGTH_SHORT).show());
 
-        buttonConnectWing.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                connectDevice(btAdapter.getRemoteDevice(addressSensorWing),
-                        RECEIVE_WING_MESSAGE, "Wing");
-            }
-        });
+        buttonConnectWing.setOnClickListener(v -> connectDevice(btAdapter.getRemoteDevice(addressSensorWing),
+                RECEIVE_WING_MESSAGE, "Wing"));
 
-        buttonConnectElevator.setOnClickListener(new View.OnClickListener() {
-            public void onClick(View v) {
-                connectDevice(btAdapter.getRemoteDevice(addressSensorElevator),
-                        RECEIVE_ELEVATOR_MESSAGE, "Elevator");
-            }
-        });
+        buttonConnectElevator.setOnClickListener(v -> connectDevice(btAdapter.getRemoteDevice(addressSensorElevator),
+                RECEIVE_ELEVATOR_MESSAGE, "Elevator"));
 
     }
 
     private BluetoothSocket createBluetoothSocket(BluetoothDevice device) throws IOException {
         try {
-            final Method m = device.getClass().getMethod("createInsecureRfcommSocketToServiceRecord", new Class[]{UUID.class});
+            final Method m = device.getClass().getMethod("createInsecureRfcommSocketToServiceRecord", UUID.class);
             return (BluetoothSocket) m.invoke(device, MY_UUID);
         } catch (Exception e) {
             Log.e(TAG, "Could not create Insecure RFComm Connection", e);
@@ -137,17 +113,18 @@ public class MainActivity extends AppCompatActivity {
 
     public void connectDevice(BluetoothDevice device, int m, String s) {
         Log.d(TAG, "...onResume - try connect to " + s);
-        mConnectedThreadElevator = new ConnectedThread(device, m, s);
-        mConnectedThreadElevator.start();
-
+        if (s.equals("Elevator")) {
+            mConnectedThreadElevator = new ConnectedThread(device, m, s);
+            mConnectedThreadElevator.start();
+        } else {
+            mConnectedThreadWing = new ConnectedThread(device, m, s);
+            mConnectedThreadWing.start();
+        }
     }
 
     @Override
     public void onResume() {
         super.onResume();
-
-
-
 
     }
 
@@ -178,8 +155,18 @@ public class MainActivity extends AppCompatActivity {
                 Log.d(TAG, "...Bluetooth ON...");
             } else {
                 //Prompt user to turn on Bluetooth
+
+                ActivityResultLauncher<Intent> enableBtResultLauncher = registerForActivityResult(
+                        new ActivityResultContracts.StartActivityForResult(),
+                        result -> {
+                            if (result.getResultCode() == Activity.RESULT_CANCELED){
+                                errorExit("BT must be activated.");
+                            }
+                        }
+                );
+
                 Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-                startActivityForResult(enableBtIntent, 1);
+                enableBtResultLauncher.launch(enableBtIntent);
             }
         }
     }
@@ -195,7 +182,7 @@ public class MainActivity extends AppCompatActivity {
         private final OutputStream mmOutStream;
         private final int MESSAGE;
         private BluetoothSocket btSocket = null;
-        private String position;
+        private final String position;
 
         public ConnectedThread(BluetoothDevice device, int message, String p) {
             InputStream tmpIn = null;

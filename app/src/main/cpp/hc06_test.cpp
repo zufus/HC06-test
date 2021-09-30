@@ -23,7 +23,7 @@ float dev = 0;
 char *bufferData = nullptr;
 const int avgLen = 16;
 
-//TODO Extend mobile average calculation to all the sensors
+//TODO Extend mobile average calculation to all the sensors value
 
 extern "C"
 JNIEXPORT jstring JNICALL
@@ -56,6 +56,7 @@ Java_com_skylabmodels_hc06_1test_MainActivity_processData(JNIEnv *env, jobject t
 
     pos = mobileAvg(angleBuffer, &sum, pos, avgLen, angle, &avg, &dev);
 
+    // TODO: Add code to update the text string if _and_only_if_ a valid value has been received
     sprintf(dataString, "Angles: %3.2f +/- %3.2f (%d/%d)",
             (float) avg,
             (float) dev,
