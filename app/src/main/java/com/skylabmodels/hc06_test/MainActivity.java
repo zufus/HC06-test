@@ -9,6 +9,7 @@ import android.bluetooth.BluetoothSocket;
 import android.bluetooth.BluetoothDevice;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.util.Log;
 import android.view.View;
@@ -16,11 +17,16 @@ import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.Locale;
 import java.util.UUID;
+
 
 public class MainActivity extends AppCompatActivity {
 
@@ -29,6 +35,7 @@ public class MainActivity extends AppCompatActivity {
     ConstraintLayout layout;
     Handler h;
 
+    private boolean isFolderCreated;
     private static final String TAG = "bluetooth2";
     final int RECEIVE_ELEVATOR_MESSAGE = 1;        // Status  for Handler
     final int RECEIVE_WING_MESSAGE = 2;
@@ -68,15 +75,16 @@ public class MainActivity extends AppCompatActivity {
                     case RECEIVE_ELEVATOR_MESSAGE:
                         byte[] readElevatorBuf = (byte[]) msg.obj;
                         String strEleIncom = new String(readElevatorBuf, 0, msg.arg1);
-                        Log.d(TAG, "Received Elevator Message");
-                        textSensorElevator.setText(strEleIncom);
-                        //textSensorElevator.setText(processData(readElevatorBuf));
+                        //Log.d(TAG, "Received Elevator Message: " + strEleIncom);
+                        //textSensorElevator.setText(strEleIncom);
+                        //processDataHere(readElevatorBuf);
+                        processBuffer(readElevatorBuf, textSensorElevator);
                         break;
                     case RECEIVE_WING_MESSAGE:
                         byte[] readWingBuf = (byte[]) msg.obj;
                         String strWingIncom = new String(readWingBuf, 0, msg.arg1);
-                        Log.d(TAG, "Received Wing Message");
-                        textSensorWing.setText(strWingIncom);
+                        //Log.d(TAG, "Received Wing Message");
+                        processBuffer(readWingBuf, textSensorWing);
                         break;
                     default:
                         break;
@@ -238,7 +246,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         public void run() {
-            byte[] buffer = new byte[256];  // buffer store for the stream
+            byte[] buffer = new byte[512];  // buffer store for the stream
             int bytes; // bytes returned from read()
 
             // Keep listening to the InputStream until an exception occurs
@@ -273,14 +281,36 @@ public class MainActivity extends AppCompatActivity {
                 errorExit("From onPause() and failed to close " + position + " socket." + e2.getMessage() + ".");
             }
         }
+    }
 
+    private void processBuffer (byte[] buffer, TextView tv){
 
+       int bufferLen = buffer.length;
+
+        while (bufferLen >= 11) {
+            //Log.d(TAG, "BufLen: " + bufferLen);
+            if (buffer[0] != 0x55){
+                //Log.d(TAG, "Start byte not found, going ahead");
+                bufferLen -= 1;
+                System.arraycopy(buffer, 1, buffer, 0, bufferLen);
+                continue;
+            }
+            //Log.d(TAG, "Start byte found");
+            if (buffer[1] == 0x53) {
+                //Log.d(TAG, "Angles value found");
+                String processed = processData(Arrays.copyOfRange(buffer, 0, 11));
+                tv.setText(processed);
+            }
+
+            //Log.d(TAG, "Moving ahead by 11");
+            bufferLen -= 11;
+            System.arraycopy(buffer, 11, buffer, 0, bufferLen);
+        }
     }
 
     static {
        System.loadLibrary("hc06_test");
     }
-    public native String stringFromJNI();
     public native String processData(byte [] data);
 }
 
