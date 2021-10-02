@@ -1,5 +1,8 @@
 package com.skylabmodels.hc06_test;
 
+import static java.lang.StrictMath.abs;
+import static java.lang.StrictMath.sqrt;
+
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -10,7 +13,10 @@ import android.os.Handler;
 import android.os.Looper;
 
 import android.util.Log;
+import android.view.Window;
 import android.widget.Button;
+import android.widget.CompoundButton;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -23,6 +29,7 @@ import androidx.constraintlayout.widget.ConstraintLayout;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.UUID;
@@ -30,8 +37,10 @@ import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity {
 
-    Button buttonCalibrate, buttonPollRate, buttonConnectElevator, buttonConnectWing;
+    Button buttonCalibrateXY, buttonCalibrateZ;
+    Switch switchConnectElevator, switchConnectWing;
     TextView textSensorElevator, textSensorWing;
+    TextView textSensorElevatorDebug, textSensorWingDebug;
     ConstraintLayout layout;
     Handler h;
 
@@ -50,23 +59,61 @@ public class MainActivity extends AppCompatActivity {
     private static final String addressSensorElevator = "20:21:01:12:32:11";
     private static final String addressSensorWing     = "20:21:01:12:27:63";
 
+    private static final byte[] msgCalXY = {(byte) 0xFF, (byte) 0xAA, (byte) 0x67};
+    private static final byte[] msgCalZ = {(byte) 0xFF, (byte) 0xAA, (byte) 0x52};
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        this.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        // Create interface
         setContentView(R.layout.activity_main);
 
-        buttonCalibrate = findViewById(R.id.buttonCalibrate);
+        buttonCalibrateXY       = findViewById(R.id.buttonCalibrateXY);
+        buttonCalibrateZ        = findViewById(R.id.buttonCalibrateZ);
+        switchConnectElevator   = findViewById(R.id.switchConnectElevator);
+        switchConnectWing       = findViewById(R.id.switchConnectWing);
 
-        buttonPollRate = findViewById(R.id.buttonPollRate);
+        textSensorElevator      = findViewById(R.id.textSensorElevator);
+        textSensorWing          = findViewById(R.id.textSensorWing);
 
-        buttonConnectElevator = findViewById(R.id.buttonConnectElevator);
-        buttonConnectWing = findViewById(R.id.buttonConnectWing);
+        textSensorElevatorDebug = findViewById(R.id.textSensorElevatorDebug);
+        textSensorWingDebug     = findViewById(R.id.textSensorWingDebug);
 
-        textSensorElevator = findViewById(R.id.textSensorElevator);
-        textSensorWing = findViewById(R.id.textSensorWing);
+
         layout = findViewById(R.id.layout);
 
+        // Assign callbacks to all the switches/buttons
+        buttonCalibrateXY.setOnClickListener(v -> {
+            if (mConnectedThreadWing != null) {
+                Toast.makeText(getBaseContext(), "Wait for calibration", Toast.LENGTH_SHORT).show();
+                mConnectedThreadWing.write(msgCalXY);
+            }
+
+        });
+
+        buttonCalibrateZ.setOnClickListener(v -> Toast.makeText(getBaseContext(), "TODO: change poll rate", Toast.LENGTH_SHORT).show());
+
+        switchConnectElevator.setOnCheckedChangeListener((compoundButton, b) -> {
+            if (b)
+                connectDevice(btAdapter.getRemoteDevice(addressSensorElevator),
+                        RECEIVE_ELEVATOR_MESSAGE, "Elevator");
+            else if (mConnectedThreadElevator != null)
+                mConnectedThreadElevator.cancel();
+
+        });
+
+        switchConnectWing.setOnCheckedChangeListener((compoundButton, b) -> {
+            if (b)
+                connectDevice(btAdapter.getRemoteDevice(addressSensorWing),
+                        RECEIVE_WING_MESSAGE, "Wing");
+            else if (mConnectedThreadWing != null)
+                mConnectedThreadWing.cancel();
+        });
+
+        // Create an handle to process the data received by the sensors
         h = new Handler(Looper.getMainLooper(), msg -> {
             switch (msg.what) {
                 case RECEIVE_ELEVATOR_MESSAGE:
@@ -85,18 +132,11 @@ public class MainActivity extends AppCompatActivity {
             return true;
         });
 
-        btAdapter = BluetoothAdapter.getDefaultAdapter();       // get Bluetooth adapter
+        // Ask to turn on phone's Bkuetooth if needed
+        btAdapter = BluetoothAdapter.getDefaultAdapter();
         checkBTState();
 
-        buttonCalibrate.setOnClickListener(v -> Toast.makeText(getBaseContext(), "Wait for calibration", Toast.LENGTH_SHORT).show());
-
-        buttonPollRate.setOnClickListener(v -> Toast.makeText(getBaseContext(), "TODO: change poll rate", Toast.LENGTH_SHORT).show());
-
-        buttonConnectWing.setOnClickListener(v -> connectDevice(btAdapter.getRemoteDevice(addressSensorWing),
-                RECEIVE_WING_MESSAGE, "Wing"));
-
-        buttonConnectElevator.setOnClickListener(v -> connectDevice(btAdapter.getRemoteDevice(addressSensorElevator),
-                RECEIVE_ELEVATOR_MESSAGE, "Elevator"));
+        // Done
 
     }
 
@@ -125,6 +165,17 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onResume() {
         super.onResume();
+        Log.d(TAG, "...In onPause()...");
+
+        if (mConnectedThreadElevator != null){
+            Log.d(TAG, "...closing Elevator Socket");
+            mConnectedThreadElevator.connect();
+        }
+
+        if (mConnectedThreadWing != null) {
+            Log.d(TAG, "...closing Wing Socket");
+            mConnectedThreadWing.connect();
+        }
 
     }
 
@@ -136,12 +187,12 @@ public class MainActivity extends AppCompatActivity {
 
         if (mConnectedThreadElevator != null){
             Log.d(TAG, "...closing Elevator Socket");
-            mConnectedThreadElevator.cancel();
+            mConnectedThreadElevator.start();
         }
 
         if (mConnectedThreadWing != null) {
             Log.d(TAG, "...closing Wing Socket");
-            mConnectedThreadWing.cancel();
+            mConnectedThreadWing.start();
         }
     }
 
@@ -178,6 +229,8 @@ public class MainActivity extends AppCompatActivity {
 
 
     private class ConnectedThread extends Thread {
+
+
         private final InputStream mmInStream;
         private final OutputStream mmOutStream;
         private final int MESSAGE;
@@ -202,19 +255,7 @@ public class MainActivity extends AppCompatActivity {
             // when you attempt to connect and pass your message.
             btAdapter.cancelDiscovery();
 
-            // Establish the connection.  This will block until it connects.
-            Log.d(TAG, "...Connecting...");
-            try {
-                btSocket.connect();
-                Log.d(TAG, ".... Wing Connection ok...");
-                Toast.makeText(getBaseContext(), "Connected to" + position, Toast.LENGTH_LONG).show();
-            } catch (IOException e) {
-                try {
-                    btSocket.close();
-                } catch (IOException e2) {
-                    errorExit("In onResume() and unable to close socket during connection failure" + e2.getMessage() + ".");
-                }
-            }
+            connect();
 
             // Create a data stream so we can talk to server.
             Log.d(TAG, "...Create " + position + " Socket...");
@@ -230,6 +271,25 @@ public class MainActivity extends AppCompatActivity {
 
             mmInStream = tmpIn;
             mmOutStream = tmpOut;
+        }
+
+        public void connect(){
+
+            // Establish the connection.  This will block until it connects.
+            Log.d(TAG, "...Connecting...");
+            try {
+                btSocket.connect();
+                Log.d(TAG, ".... Wing Connection ok...");
+                Toast.makeText(getBaseContext(), "Connected to" + position, Toast.LENGTH_LONG).show();
+            } catch (IOException e) {
+                try {
+                    btSocket.close();
+                } catch (IOException e2) {
+                    errorExit("In onResume() and unable to close socket during connection failure" + e2.getMessage() + ".");
+                }
+            }
+
+
         }
 
         public void run() {
@@ -251,9 +311,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         /* Call this from the main activity to send data to the remote device */
-        public void write(String message) {
-            Log.d(TAG, "...Data to send: " + message + "...");
-            byte[] msgBuffer = message.getBytes();
+        public void write(byte[] msgBuffer) {
             try {
                 mmOutStream.write(msgBuffer);
             } catch (IOException e) {
@@ -295,10 +353,68 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+
+    private static class smoothData {
+
+        private float[] angleBuffer;
+        private int pos;
+        private int k;
+        private float avg;
+        private float sum;
+        private float dev;
+        private int avgLen;
+
+        public smoothData (int L) {
+            pos = 0;
+            k = 0;
+            avg = 0;
+            sum = 0;
+            dev = 0;
+            avgLen = L;
+
+        }
+
+        public void mobile_average (float d) {
+            if (k > avgLen && (abs(avg - d) > 8*dev))
+                Log.d(TAG, "Ops " + d + "/" + avg + "/" + dev);
+
+            if (k < avgLen)
+                avgLen = k;
+
+            sum += sum - angleBuffer[pos] + d;
+            angleBuffer[pos] = d;
+            avg = sum / avgLen;
+            dev = standardDev(angleBuffer, avg, avgLen);
+
+            pos++;
+            if (pos > avgLen)
+                pos = 0;
+        }
+
+        public float standardDev(float[] x, float xm, int avgLen){
+            float sDev = 0;
+            int i = 0;
+
+            for (i = 0; i < avgLen; i++)
+                sDev += (x[i] - xm) * (x[i] - xm);
+
+            sDev = (float) sqrt(sDev / avgLen);
+            sDev = (sDev > 0.001) ? sDev : (float) 0.001;
+            return sDev;
+        }
+
+    }
+
+    //C functions
+
     static {
        System.loadLibrary("hc06_test");
     }
     public native String processData(byte [] data);
+    public native void createDataProcessingObjects();
+    public native void handleData(int id, byte[] data);
+    public native void resetData(int id);
+    public native void deleteDataProcessingObjects();
 }
 
 

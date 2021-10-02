@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">HC06-test</string>
-    <string name="btCalibrate">Calibrate</string>
-    <string name="btPollRate">Poll Rate</string>
-    <string name="textMessageTitleWing">Wing Device</string>
-    <string name="textMessageTitleElevator">Elevator Device</string>
+    <string name="btCalibrateXY">Calibrate XY</string>
+    <string name="btCalibrateZ">Calibrate Z</string>
+    <string name="textMessageTitleWing">Wing Sensor</string>
+    <string name="textMessageTitleElevator">Elevator Sensor</string>
 </resources>

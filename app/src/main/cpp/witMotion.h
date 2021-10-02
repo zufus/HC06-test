@@ -1,10 +1,9 @@
 //
-// Created by zufus on 9/26/21.
+// Created by zufus on 10/2/21.
 //
 
-#ifndef HC06_TEST_JY901_H
-#define HC06_TEST_JY901_H
-
+#ifndef HC06_TEST_WITMOTION_H
+#define HC06_TEST_WITMOTION_H
 #define SAVE 		0x00
 #define CALSW 		0x01
 #define RSW 		0x02
@@ -130,8 +129,9 @@ struct SGPSV
     short sGPSYaw;
     long lGPSVelocity;
 };
-class CJY901
-{
+
+class witMotion {
+
 public:
     struct STime		stcTime;
     struct SAcc 		stcAcc;
@@ -144,23 +144,28 @@ public:
     struct SGPSV 		stcGPSV;
 
     char dataString[256];
-    int k = 0;
+    int k;
 
     float *angleBuffer;
-    int pos = 0;
-    float avg = 0;
-    float sum = 0;
-    float dev = 0;
-    char *bufferData = nullptr;
-    const int avgLen = 16;
+    int pos;
+    float avg;
+    float sum;
+    float dev ;
+    char *bufferData;
+    const int avgLen;
 
 
-    CJY901 ();
-    void CopeSerialData(char ucData[],unsigned short usLength);
+    witMotion (int );
 
-    int mobileAvg (float *oldAngles, float *s, int p, int aLen, float nextAngle, float *average, float *dev);
-    float standardDev (const float *, float , int);
+    void readAngleFromSerialData(char ucData[],unsigned short usLength);
 
+    void mobileAvg (void );
+    void standardDev (void );
+    void reset(int );
+
+    float getAverage();
+    float getStdDev();
 };
 
-#endif //HC06_TEST_JY901_H
+
+#endif //HC06_TEST_WITMOTION_H

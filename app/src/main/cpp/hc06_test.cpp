@@ -4,12 +4,13 @@
 #include <android/log.h>
 #include <iostream>
 #include <cmath>
-#include "JY901.h"
+#include <algorithm>
+#include "witMotion.h"
 #define TAG "bluetooth2"
 
 
 int mobileAvg (float *oldAngles, float *s, int p, int aLen, float nextAngle, float *average, float *dev);
-float standardDev (float *, int, float , int);
+float standardDev (const float *, float , int);
 
 
 char dataString[256];
@@ -27,8 +28,7 @@ const int avgLen = 16;
 
 extern "C"
 JNIEXPORT jstring JNICALL
-Java_com_skylabmodels_hc06_1test_MainActivity_processData(JNIEnv *env, jobject thiz,
-                                                          jbyteArray data) {
+Java_com_skylabmodels_hc06_1test_MainActivity_processData(JNIEnv *env, jobject thiz, jbyteArray data) {
 
     SAngle Angle = {0, 0, 0, 0};
 
@@ -45,7 +45,8 @@ Java_com_skylabmodels_hc06_1test_MainActivity_processData(JNIEnv *env, jobject t
 
     if (!cData) {
         //TODO Find a better way to handle this error
-        __android_log_print(ANDROID_LOG_DEBUG, TAG, "BufferLen: %d -- ERROR Retriving Elements", bufferLen);
+        __android_log_print(ANDROID_LOG_DEBUG, TAG,
+                            "BufferLen: %d -- ERROR Retriving Elements", bufferLen);
         return env->NewStringUTF("Data Retrive Error");
     }
 
@@ -57,10 +58,7 @@ Java_com_skylabmodels_hc06_1test_MainActivity_processData(JNIEnv *env, jobject t
     pos = mobileAvg(angleBuffer, &sum, pos, avgLen, angle, &avg, &dev);
 
     // TODO: Add code to update the text string if _and_only_if_ a valid value has been received
-    sprintf(dataString, "Angles: %3.2f +/- %3.2f (%d/%d)",
-            (float) avg,
-            (float) dev,
-            k, pos);
+    sprintf(dataString, "Angles: %3.2f +/- %3.2f", (float) avg, (float) dev);
 
     __android_log_print(ANDROID_LOG_DEBUG, TAG, "%s", dataString);
 
@@ -69,10 +67,36 @@ Java_com_skylabmodels_hc06_1test_MainActivity_processData(JNIEnv *env, jobject t
     return env->NewStringUTF(dataString);
 }
 
-int mobileAvg (float *oldAngles, float *s, int p, int aLen, float nextAngle, float *average, float *dev){
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_skylabmodels_hc06_1test_MainActivity_createDataProcessingObjects(JNIEnv *env, jobject thiz){
 
-    if (k > 16 && (abs(nextAngle - *average) > 8*(*dev))) {
-            __android_log_print(ANDROID_LOG_DEBUG, TAG, "Ops:  %f//%f//%f", (float) nextAngle , *average, *dev);
+
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_skylabmodels_hc06_1test_MainActivity_handleData(JNIEnv *env, jobject thiz, jint id, jbyteArray data){
+
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_skylabmodels_hc06_1test_MainActivity_resetData(JNIEnv *env, jobject thiz, jint id){
+
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_skylabmodels_hc06_1test_MainActivity_deleteDataProcessingObjects(JNIEnv *env, jobject thiz){
+
+}
+
+
+int mobileAvg (float *oldAngles, float *s, int p, int aLen, float nextAngle, float *average, float *d){
+
+    if (k > 16 && (abs(nextAngle - *average) > 8*(*d))) {
+            __android_log_print(ANDROID_LOG_DEBUG, TAG, "Ops:  %f//%f//%f", (float) nextAngle , *average, *d);
             return p;
     }
 
@@ -81,8 +105,8 @@ int mobileAvg (float *oldAngles, float *s, int p, int aLen, float nextAngle, flo
 
     *s = *s - oldAngles[p] + nextAngle;
     oldAngles[p] = nextAngle;
-    *average = *s / aLen;
-    *dev = standardDev(oldAngles, 0, *average, aLen);
+    *average = *s / (float) aLen;
+    *d = standardDev(oldAngles, *average, aLen);
 
     p++;
     if (p > avgLen)
@@ -91,11 +115,12 @@ int mobileAvg (float *oldAngles, float *s, int p, int aLen, float nextAngle, flo
     return p;
 }
 
-float standardDev (float *x, int n, float xm, int N){
-    float sdev = 0;
+float standardDev (const float *x, float xm, int N){
+    float sDev = 0;
     for (int i = 0; i < N; i++)
-        sdev += (x[i] - xm) * (x[i] - xm);
+        sDev += (x[i] - xm) * (x[i] - xm);
 
-    sdev = sdev/(float)N;
-    return sqrtf(sdev);
+    sDev = sqrt(sDev / (float)N);
+    sDev = (sDev > 0.001) ? sDev : 0.001;
+    return sqrtf(sDev);
 }
