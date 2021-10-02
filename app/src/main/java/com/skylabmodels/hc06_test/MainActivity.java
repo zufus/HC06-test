@@ -32,6 +32,7 @@ import java.io.OutputStream;
 
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.Locale;
 import java.util.UUID;
 
 
@@ -40,13 +41,16 @@ public class MainActivity extends AppCompatActivity {
     Button buttonCalibrateXY, buttonCalibrateZ;
     Switch switchConnectElevator, switchConnectWing;
     TextView textSensorElevator, textSensorWing;
-    TextView textSensorElevatorDebug, textSensorWingDebug;
+    TextView textViewResult;
     ConstraintLayout layout;
     Handler h;
 
     private static final String TAG = "bluetooth2";
     final int RECEIVE_ELEVATOR_MESSAGE = 1;        // Status  for Handler
     final int RECEIVE_WING_MESSAGE = 2;
+    final int ELEVATOR = 0;
+    final int WING =1;
+
     private BluetoothAdapter btAdapter = null;
 
     private ConnectedThread mConnectedThreadWing;
@@ -79,8 +83,8 @@ public class MainActivity extends AppCompatActivity {
         textSensorElevator      = findViewById(R.id.textSensorElevator);
         textSensorWing          = findViewById(R.id.textSensorWing);
 
-        textSensorElevatorDebug = findViewById(R.id.textSensorElevatorDebug);
-        textSensorWingDebug     = findViewById(R.id.textSensorWingDebug);
+        textViewResult          = findViewById(R.id.textViewResult);
+
 
 
         layout = findViewById(R.id.layout);
@@ -90,6 +94,10 @@ public class MainActivity extends AppCompatActivity {
             if (mConnectedThreadWing != null) {
                 Toast.makeText(getBaseContext(), "Wait for calibration", Toast.LENGTH_SHORT).show();
                 mConnectedThreadWing.write(msgCalXY);
+            }
+            if (mConnectedThreadElevator != null) {
+                Toast.makeText(getBaseContext(), "Wait for calibration", Toast.LENGTH_SHORT).show();
+                mConnectedThreadElevator.write(msgCalXY);
             }
 
         });
@@ -113,22 +121,24 @@ public class MainActivity extends AppCompatActivity {
                 mConnectedThreadWing.cancel();
         });
 
+        // Create processing data objects
+        createDataProcessingObjects();
+
         // Create an handle to process the data received by the sensors
         h = new Handler(Looper.getMainLooper(), msg -> {
             switch (msg.what) {
                 case RECEIVE_ELEVATOR_MESSAGE:
                     byte[] readElevatorBuf = (byte[]) msg.obj;
-
-                    processBuffer(readElevatorBuf, textSensorElevator);
+                     processBuffer(ELEVATOR, readElevatorBuf, textSensorElevator);
                     break;
                 case RECEIVE_WING_MESSAGE:
                     byte[] readWingBuf = (byte[]) msg.obj;
-
-                    processBuffer(readWingBuf, textSensorWing);
+                    processBuffer(WING, readWingBuf, textSensorWing);
                     break;
                 default:
                     break;
             }
+            textViewResult.setText(String.format(Locale.ITALIAN,"%3.2f", getData(WING) - getData(ELEVATOR)));
             return true;
         });
 
@@ -328,9 +338,11 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void processBuffer (byte[] buffer, TextView tv){
 
-       int bufferLen = buffer.length;
+
+    private void processBuffer (int id, byte[] buffer, TextView tv){
+
+        int bufferLen = buffer.length;
 
         while (bufferLen >= 11) {
             //Log.d(TAG, "BufLen: " + bufferLen);
@@ -342,8 +354,9 @@ public class MainActivity extends AppCompatActivity {
             }
             //Log.d(TAG, "Start byte found");
             if (buffer[1] == 0x53) {
-                //Log.d(TAG, "Angles value found");
-                String processed = processData(Arrays.copyOfRange(buffer, 0, 11));
+                Log.d(TAG, "In processData2: Angles value found");
+                handleData(id, Arrays.copyOfRange(buffer, 0, 11));
+                String processed = String.format(Locale.ITALIAN, "%3.2f +/- %3.2f", getData(id), getStdDev(id));
                 tv.setText(processed);
             }
 
@@ -352,7 +365,6 @@ public class MainActivity extends AppCompatActivity {
             System.arraycopy(buffer, 11, buffer, 0, bufferLen);
         }
     }
-
 
     private static class smoothData {
 
@@ -413,7 +425,9 @@ public class MainActivity extends AppCompatActivity {
     public native String processData(byte [] data);
     public native void createDataProcessingObjects();
     public native void handleData(int id, byte[] data);
-    public native void resetData(int id);
+    public native float getData(int id);
+    public native float getStdDev(int id);
+    public native void resetData(int id, int N);
     public native void deleteDataProcessingObjects();
 }
 

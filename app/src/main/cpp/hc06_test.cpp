@@ -8,6 +8,8 @@
 #include "witMotion.h"
 #define TAG "bluetooth2"
 
+#define ELEVATOR 0
+#define WING 1
 
 int mobileAvg (float *oldAngles, float *s, int p, int aLen, float nextAngle, float *average, float *dev);
 float standardDev (const float *, float , int);
@@ -24,7 +26,61 @@ float dev = 0;
 char *bufferData = nullptr;
 const int avgLen = 16;
 
+
+witMotion *dataProcessor[2];
+
 //TODO Extend mobile average calculation to all the sensors value
+
+
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_skylabmodels_hc06_1test_MainActivity_createDataProcessingObjects(JNIEnv *env, jobject thiz){
+
+    dataProcessor[ELEVATOR] = new witMotion(16);
+    dataProcessor[WING]     = new witMotion(16);
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_skylabmodels_hc06_1test_MainActivity_handleData(JNIEnv *env, jobject thiz, jint id, jbyteArray data){
+
+    int buffLen = env->GetArrayLength(data);
+    char *buffData = (char *) malloc(buffLen + 1);
+    jbyte *cData = env->GetByteArrayElements(data, nullptr);
+    memcpy(buffData, cData, buffLen);
+
+
+    dataProcessor[id]->readAngleFromSerialData(buffData);
+    dataProcessor[id]->mobileAvg();
+    env->ReleaseByteArrayElements(data, cData, JNI_ABORT);
+}
+
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_skylabmodels_hc06_1test_MainActivity_resetData(JNIEnv *env, jobject thiz, jint id, jint N){
+    dataProcessor[id]->reset(N);
+}
+
+extern "C"
+JNIEXPORT jfloat JNICALL
+Java_com_skylabmodels_hc06_1test_MainActivity_getData(JNIEnv *env, jobject thiz, jint id){
+    return dataProcessor[id]->getAverage();
+}
+
+extern "C"
+JNIEXPORT jfloat JNICALL
+Java_com_skylabmodels_hc06_1test_MainActivity_getStdDev(JNIEnv *env, jobject thiz, jint id){
+    return dataProcessor[id]->getStdDev();
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_com_skylabmodels_hc06_1test_MainActivity_deleteDataProcessingObjects(JNIEnv *env, jobject thiz){
+
+}
+
 
 extern "C"
 JNIEXPORT jstring JNICALL
@@ -65,31 +121,6 @@ Java_com_skylabmodels_hc06_1test_MainActivity_processData(JNIEnv *env, jobject t
     env->ReleaseByteArrayElements(data, cData, JNI_ABORT);
 
     return env->NewStringUTF(dataString);
-}
-
-extern "C"
-JNIEXPORT void JNICALL
-Java_com_skylabmodels_hc06_1test_MainActivity_createDataProcessingObjects(JNIEnv *env, jobject thiz){
-
-
-}
-
-extern "C"
-JNIEXPORT void JNICALL
-Java_com_skylabmodels_hc06_1test_MainActivity_handleData(JNIEnv *env, jobject thiz, jint id, jbyteArray data){
-
-}
-
-extern "C"
-JNIEXPORT void JNICALL
-Java_com_skylabmodels_hc06_1test_MainActivity_resetData(JNIEnv *env, jobject thiz, jint id){
-
-}
-
-extern "C"
-JNIEXPORT void JNICALL
-Java_com_skylabmodels_hc06_1test_MainActivity_deleteDataProcessingObjects(JNIEnv *env, jobject thiz){
-
 }
 
 

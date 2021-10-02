@@ -2,6 +2,8 @@
 // Created by zufus on 10/2/21.
 //
 
+#include <jni.h>
+
 #ifndef HC06_TEST_WITMOTION_H
 #define HC06_TEST_WITMOTION_H
 #define SAVE 		0x00
@@ -131,17 +133,15 @@ struct SGPSV
 };
 
 class witMotion {
-
-public:
-    struct STime		stcTime;
-    struct SAcc 		stcAcc;
-    struct SGyro 		stcGyro;
+    //struct STime		stcTime;
+    //struct SAcc 		stcAcc;
+    //struct SGyro 		stcGyro;
     struct SAngle 		stcAngle;
-    struct SMag 		stcMag;
-    struct SDStatus 	stcDStatus;
-    struct SPress 		stcPress;
-    struct SLonLat 		stcLonLat;
-    struct SGPSV 		stcGPSV;
+    //struct SMag 		stcMag;
+    //struct SDStatus 	stcDStatus;
+    //struct SPress 		stcPress;
+    //struct SLonLat 		stcLonLat;
+    //struct SGPSV 		stcGPSV;
 
     char dataString[256];
     int k;
@@ -152,15 +152,15 @@ public:
     float sum;
     float dev ;
     char *bufferData;
-    const int avgLen;
+    int avgLen;
 
+public:
+    witMotion (int len);
 
-    witMotion (int );
-
-    void readAngleFromSerialData(char ucData[],unsigned short usLength);
+    void readAngleFromSerialData(const char *ucData);
 
     void mobileAvg (void );
-    void standardDev (void );
+    void standardDev (int );
     void reset(int );
 
     float getAverage();
