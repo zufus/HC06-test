@@ -51,7 +51,8 @@ void witMotion::mobileAvg(){
                         "In mobileAvg, newAngle= %f" , newAngle);
 
     if ((this->k > this->avgLen) && (abs(newAngle - this->avg) > 100*dev)){
-        __android_log_print(ANDROID_LOG_DEBUG, TAG, "Ops:  %f//%f//%f", newAngle , this->avg, this->dev);
+        if (HC06_DEBUG)
+            __android_log_print(ANDROID_LOG_DEBUG, TAG, "Ops:  %f//%f//%f", newAngle , this->avg, this->dev);
         return;
     }
 

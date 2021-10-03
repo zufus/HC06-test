@@ -5,4 +5,5 @@
     <string name="textMessageTitleWing">Wing Sensor</string>
     <string name="textMessageTitleElevator">Elevator Sensor</string>
     <string name="textviewDiedro">Diedro</string>
+    <string name="action_settings">Select Sensors</string>
 </resources>

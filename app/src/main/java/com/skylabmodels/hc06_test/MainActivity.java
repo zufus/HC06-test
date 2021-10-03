@@ -8,28 +8,29 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
 import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-
 import android.util.Log;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.Window;
 import android.widget.Button;
-import android.widget.CompoundButton;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.Toolbar;
 
 import androidx.activity.result.ActivityResultLauncher;
-
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.constraintlayout.widget.ConstraintLayout;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Locale;
@@ -42,6 +43,7 @@ public class MainActivity extends AppCompatActivity {
     Switch switchConnectElevator, switchConnectWing;
     TextView textSensorElevator, textSensorWing;
     TextView textViewResult;
+    androidx.appcompat.widget.Toolbar toolbar;
     ConstraintLayout layout;
     Handler h;
 
@@ -66,6 +68,33 @@ public class MainActivity extends AppCompatActivity {
     private static final byte[] msgCalXY = {(byte) 0xFF, (byte) 0xAA, (byte) 0x67};
     private static final byte[] msgCalZ = {(byte) 0xFF, (byte) 0xAA, (byte) 0x52};
 
+    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.actions, menu);
+
+        MenuItem settingsItem = menu.findItem(R.id.action_settings);
+
+        return super.onCreateOptionsMenu(menu);
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch (item.getItemId()) {
+            case R.id.action_settings:
+                // User chose the "Settings" item, show the app settings UI...
+                Log.d(TAG, "Preferences setting");
+                return true;
+
+            default:
+                // If we got here, the user's action was not recognized.
+                // Invoke the superclass to handle it.
+                return super.onOptionsItemSelected(item);
+
+        }
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -74,6 +103,9 @@ public class MainActivity extends AppCompatActivity {
 
         // Create interface
         setContentView(R.layout.activity_main);
+
+        androidx.appcompat.widget.Toolbar toolbar = (androidx.appcompat.widget.Toolbar) findViewById(R.id.toolbar);
+        setSupportActionBar(toolbar);
 
         buttonCalibrateXY       = findViewById(R.id.buttonCalibrateXY);
         buttonCalibrateZ        = findViewById(R.id.buttonCalibrateZ);
@@ -92,11 +124,11 @@ public class MainActivity extends AppCompatActivity {
         // Assign callbacks to all the switches/buttons
         buttonCalibrateXY.setOnClickListener(v -> {
             if (mConnectedThreadWing != null) {
-                Toast.makeText(getBaseContext(), "Wait for calibration", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getBaseContext(), "Wait for Wing sensor calibration", Toast.LENGTH_SHORT).show();
                 mConnectedThreadWing.write(msgCalXY);
             }
             if (mConnectedThreadElevator != null) {
-                Toast.makeText(getBaseContext(), "Wait for calibration", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getBaseContext(), "Wait for Elevator calibration", Toast.LENGTH_SHORT).show();
                 mConnectedThreadElevator.write(msgCalXY);
             }
 
@@ -162,13 +194,28 @@ public class MainActivity extends AppCompatActivity {
 
 
     public void connectDevice(BluetoothDevice device, int m, String s) {
-        Log.d(TAG, "...onResume - try connect to " + s);
+        Log.d(TAG, "...trying connection to " + s);
         if (s.equals("Elevator")) {
-            mConnectedThreadElevator = new ConnectedThread(device, m, s);
-            mConnectedThreadElevator.start();
+            try {
+                mConnectedThreadElevator = new ConnectedThread(device, m, s);
+                mConnectedThreadElevator.start();
+
+            } catch (IOException e) {
+                Log.d(TAG, "... in connectDevice(), thread creation failed");
+                switchConnectElevator.setChecked(false);
+            }
+
+
         } else {
-            mConnectedThreadWing = new ConnectedThread(device, m, s);
-            mConnectedThreadWing.start();
+            try{
+                mConnectedThreadWing = new ConnectedThread(device, m, s);
+                mConnectedThreadWing.start();
+            } catch (IOException e) {
+                Log.d(TAG, "... in connectDevice(), thread creation failed");
+                switchConnectWing.setChecked(false);
+            }
+
+
         }
     }
 
@@ -197,12 +244,14 @@ public class MainActivity extends AppCompatActivity {
 
         if (mConnectedThreadElevator != null){
             Log.d(TAG, "...closing Elevator Socket");
-            mConnectedThreadElevator.start();
+            mConnectedThreadElevator.cancel();
+            switchConnectWing.setChecked(false);
         }
 
         if (mConnectedThreadWing != null) {
             Log.d(TAG, "...closing Wing Socket");
-            mConnectedThreadWing.start();
+            mConnectedThreadWing.cancel();
+            switchConnectWing.setChecked(false);
         }
     }
 
@@ -240,19 +289,20 @@ public class MainActivity extends AppCompatActivity {
 
     private class ConnectedThread extends Thread {
 
-
+        private boolean isConnected;
         private final InputStream mmInStream;
         private final OutputStream mmOutStream;
         private final int MESSAGE;
         private BluetoothSocket btSocket = null;
         private final String position;
 
-        public ConnectedThread(BluetoothDevice device, int message, String p) {
+        public ConnectedThread(BluetoothDevice device, int message, String p) throws IOException {
             InputStream tmpIn = null;
             OutputStream tmpOut = null;
             MESSAGE = message;
             position = p;
 
+            isConnected = false;
             //Create Bluetooth Socket
 
             try {
@@ -265,8 +315,9 @@ public class MainActivity extends AppCompatActivity {
             // when you attempt to connect and pass your message.
             btAdapter.cancelDiscovery();
 
-            connect();
-
+            if (!connect()) {
+                throw new IOException("Connect failed");
+            }
             // Create a data stream so we can talk to server.
             Log.d(TAG, "...Create " + position + " Socket...");
 
@@ -281,25 +332,31 @@ public class MainActivity extends AppCompatActivity {
 
             mmInStream = tmpIn;
             mmOutStream = tmpOut;
+
+            isConnected = true;
+
         }
 
-        public void connect(){
+        public boolean connect(){
 
             // Establish the connection.  This will block until it connects.
             Log.d(TAG, "...Connecting...");
             try {
                 btSocket.connect();
-                Log.d(TAG, ".... Wing Connection ok...");
+                Log.d(TAG, ".... BT Connection to " + position + " ok...");
                 Toast.makeText(getBaseContext(), "Connected to" + position, Toast.LENGTH_LONG).show();
+                return true;
             } catch (IOException e) {
                 try {
                     btSocket.close();
+                    Log.d(TAG, ".... BT Connection " + position + " failed...");
+                    return false;
+
                 } catch (IOException e2) {
                     errorExit("In onResume() and unable to close socket during connection failure" + e2.getMessage() + ".");
                 }
             }
-
-
+            return false;
         }
 
         public void run() {
@@ -354,7 +411,7 @@ public class MainActivity extends AppCompatActivity {
             }
             //Log.d(TAG, "Start byte found");
             if (buffer[1] == 0x53) {
-                Log.d(TAG, "In processData2: Angles value found");
+                //Log.d(TAG, "In processData2: Angles value found");
                 handleData(id, Arrays.copyOfRange(buffer, 0, 11));
                 String processed = String.format(Locale.ITALIAN, "%3.2f +/- %3.2f", getData(id), getStdDev(id));
                 tv.setText(processed);
