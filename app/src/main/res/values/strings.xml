@@ -6,4 +6,7 @@
     <string name="textMessageTitleElevator">Elevator Sensor</string>
     <string name="textviewDiedro">Diedro</string>
     <string name="action_settings">Select Sensors</string>
+    <string name="connect">Connect</string>
+    <string name="_0x53">0x53</string>
+    <string name="bluetooth_not_supported">Bluetooth not supported</string>
 </resources>

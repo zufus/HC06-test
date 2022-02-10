@@ -1,13 +1,15 @@
 package com.skylabmodels.hc06_test;
 
-import static java.lang.StrictMath.abs;
-import static java.lang.StrictMath.sqrt;
+//import static java.lang.StrictMath.abs;
+//import static java.lang.StrictMath.sqrt;
 
+import android.Manifest;
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -17,16 +19,16 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.Window;
 import android.widget.Button;
-import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.widget.Toolbar;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.SwitchCompat;
 import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.core.app.ActivityCompat;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -40,18 +42,18 @@ import java.util.UUID;
 public class MainActivity extends AppCompatActivity {
 
     Button buttonCalibrateXY, buttonCalibrateZ;
-    Switch switchConnectElevator, switchConnectWing;
+    SwitchCompat switchConnectElevator, switchConnectWing;
     TextView textSensorElevator, textSensorWing;
     TextView textViewResult;
-    androidx.appcompat.widget.Toolbar toolbar;
+
     ConstraintLayout layout;
-    Handler h;
+    Handler queueMessageHandler;
 
     private static final String TAG = "bluetooth2";
     final int RECEIVE_ELEVATOR_MESSAGE = 1;        // Status  for Handler
     final int RECEIVE_WING_MESSAGE = 2;
     final int ELEVATOR = 0;
-    final int WING =1;
+    final int WING = 1;
 
     private BluetoothAdapter btAdapter = null;
 
@@ -62,37 +64,51 @@ public class MainActivity extends AppCompatActivity {
     private static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 
     // MAC-address of Bluetooth module (you must edit this line)
+
+    //private static final String addressSensorElevator = "00:0C:BF:18:3F:01";
     private static final String addressSensorElevator = "20:21:01:12:32:11";
-    private static final String addressSensorWing     = "20:21:01:12:27:63";
+    private static final String addressSensorWing = "20:21:01:12:27:63";
 
     private static final byte[] msgCalXY = {(byte) 0xFF, (byte) 0xAA, (byte) 0x67};
-    private static final byte[] msgCalZ = {(byte) 0xFF, (byte) 0xAA, (byte) 0x52};
+    //private static final byte[] msgCalZ = {(byte) 0xFF, (byte) 0xAA, (byte) 0x52};
 
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.actions, menu);
-
-        MenuItem settingsItem = menu.findItem(R.id.action_settings);
-
+        //MenuItem settingsItem = menu.findItem(R.id.action_settings);
         return super.onCreateOptionsMenu(menu);
     }
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        switch (item.getItemId()) {
-            case R.id.action_settings:
-                // User chose the "Settings" item, show the app settings UI...
-                Log.d(TAG, "Preferences setting");
-                return true;
-
-            default:
-                // If we got here, the user's action was not recognized.
-                // Invoke the superclass to handle it.
-                return super.onOptionsItemSelected(item);
-
+        if (item.getItemId() == R.id.action_settings) {
+            // User chose the "Settings" item, show the app settings UI...
+            Log.d(TAG, "Preferences setting");
+            return true;
         }
+
+        return super.onOptionsItemSelected(item);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                                           int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        switch (requestCode) {
+            case 1:
+                // If request is cancelled, the result arrays are empty.
+                if (grantResults.length > 0 &&
+                        grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+
+                    Log.d("MainActivity", "Permission approved");
+                } else {
+                    Log.d("MainActivity", "Error getting permission");
+                }
+                return;
+        }
+
     }
 
     @Override
@@ -101,22 +117,41 @@ public class MainActivity extends AppCompatActivity {
 
         this.requestWindowFeature(Window.FEATURE_NO_TITLE);
 
+        // Use this check to determine whether Bluetooth classic is supported on the device.
+        // Then you can selectively disable BLE-related features.
+        if (!getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH)) {
+            Toast.makeText(this, R.string.bluetooth_not_supported, Toast.LENGTH_SHORT).show();
+            finish();
+        }
+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH_CONNECT},
+                    1);
+            //return;
+        }
+
         // Create interface
         setContentView(R.layout.activity_main);
 
         androidx.appcompat.widget.Toolbar toolbar = (androidx.appcompat.widget.Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
-        buttonCalibrateXY       = findViewById(R.id.buttonCalibrateXY);
-        buttonCalibrateZ        = findViewById(R.id.buttonCalibrateZ);
-        switchConnectElevator   = findViewById(R.id.switchConnectElevator);
-        switchConnectWing       = findViewById(R.id.switchConnectWing);
+        buttonCalibrateXY = findViewById(R.id.buttonCalibrateXY);
+        buttonCalibrateZ = findViewById(R.id.buttonCalibrateZ);
+        switchConnectElevator = findViewById(R.id.switchConnectElevator);
+        switchConnectWing = findViewById(R.id.switchConnectWing);
 
-        textSensorElevator      = findViewById(R.id.textSensorElevator);
-        textSensorWing          = findViewById(R.id.textSensorWing);
+        textSensorElevator = findViewById(R.id.textSensorElevator);
+        textSensorWing = findViewById(R.id.textSensorWing);
 
-        textViewResult          = findViewById(R.id.textViewResult);
-
+        textViewResult = findViewById(R.id.textViewResult);
 
 
         layout = findViewById(R.id.layout);
@@ -157,11 +192,13 @@ public class MainActivity extends AppCompatActivity {
         createDataProcessingObjects();
 
         // Create an handle to process the data received by the sensors
-        h = new Handler(Looper.getMainLooper(), msg -> {
+
+        // In each Connection Thread, when data are read, the data are sent to the following handler
+        queueMessageHandler = new Handler(Looper.getMainLooper(), msg -> {
             switch (msg.what) {
                 case RECEIVE_ELEVATOR_MESSAGE:
                     byte[] readElevatorBuf = (byte[]) msg.obj;
-                     processBuffer(ELEVATOR, readElevatorBuf, textSensorElevator);
+                    processBuffer(ELEVATOR, readElevatorBuf, textSensorElevator);
                     break;
                 case RECEIVE_WING_MESSAGE:
                     byte[] readWingBuf = (byte[]) msg.obj;
@@ -170,25 +207,41 @@ public class MainActivity extends AppCompatActivity {
                 default:
                     break;
             }
-            textViewResult.setText(String.format(Locale.ITALIAN,"%3.2f", getData(WING) - getData(ELEVATOR)));
+            textViewResult.setText(String.format(Locale.ITALIAN, "%3.2f", getData(WING) - getData(ELEVATOR)));
             return true;
         });
 
-        // Ask to turn on phone's Bkuetooth if needed
+        // Ask to turn on phone's Bluetooth if needed
         btAdapter = BluetoothAdapter.getDefaultAdapter();
         checkBTState();
+
 
         // Done
 
     }
 
-    private BluetoothSocket createBluetoothSocket(BluetoothDevice device) throws IOException {
+    private BluetoothSocket createBluetoothSocket(BluetoothDevice device) throws Exception {
+
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH},
+                    1);
+        }
+
         try {
             final Method m = device.getClass().getMethod("createInsecureRfcommSocketToServiceRecord", UUID.class);
             return (BluetoothSocket) m.invoke(device, MY_UUID);
         } catch (Exception e) {
             Log.e(TAG, "Could not create Insecure RFComm Connection", e);
         }
+
+
         return device.createRfcommSocketToServiceRecord(MY_UUID);
     }
 
@@ -199,20 +252,22 @@ public class MainActivity extends AppCompatActivity {
             try {
                 mConnectedThreadElevator = new ConnectedThread(device, m, s);
                 mConnectedThreadElevator.start();
-
             } catch (IOException e) {
                 Log.d(TAG, "... in connectDevice(), thread creation failed");
                 switchConnectElevator.setChecked(false);
+            } catch (Exception e) {
+                Log.d(TAG, "... BLUETOOTH_SCAN permission not granted");
             }
 
-
         } else {
-            try{
+            try {
                 mConnectedThreadWing = new ConnectedThread(device, m, s);
                 mConnectedThreadWing.start();
             } catch (IOException e) {
                 Log.d(TAG, "... in connectDevice(), thread creation failed");
                 switchConnectWing.setChecked(false);
+            } catch (Exception e) {
+                Log.d(TAG, "... BLUETOOTH_SCAN permission not granted");
             }
 
 
@@ -224,7 +279,7 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         Log.d(TAG, "...In onPause()...");
 
-        if (mConnectedThreadElevator != null){
+        if (mConnectedThreadElevator != null) {
             Log.d(TAG, "...closing Elevator Socket");
             mConnectedThreadElevator.connect();
         }
@@ -242,7 +297,7 @@ public class MainActivity extends AppCompatActivity {
 
         Log.d(TAG, "...In onPause()...");
 
-        if (mConnectedThreadElevator != null){
+        if (mConnectedThreadElevator != null) {
             Log.d(TAG, "...closing Elevator Socket");
             mConnectedThreadElevator.cancel();
             switchConnectWing.setChecked(false);
@@ -258,18 +313,17 @@ public class MainActivity extends AppCompatActivity {
     private void checkBTState() {
         // Check for Bluetooth support and then check to make sure it is turned on
         // Emulator doesn't support Bluetooth and will return null
-        if(btAdapter==null) {
+        if (btAdapter == null) {
             errorExit("Bluetooth not support");
         } else {
-            if (btAdapter.isEnabled()) {
-                Log.d(TAG, "...Bluetooth ON...");
-            } else {
+            if (btAdapter.isEnabled()) Log.d(TAG, "...Bluetooth ON...");
+            else {
                 //Prompt user to turn on Bluetooth
 
                 ActivityResultLauncher<Intent> enableBtResultLauncher = registerForActivityResult(
                         new ActivityResultContracts.StartActivityForResult(),
                         result -> {
-                            if (result.getResultCode() == Activity.RESULT_CANCELED){
+                            if (result.getResultCode() == Activity.RESULT_CANCELED) {
                                 errorExit("BT must be activated.");
                             }
                         }
@@ -281,7 +335,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void errorExit(String message){
+    private void errorExit(String message) {
         Toast.makeText(getBaseContext(), "Fatal Error" + " - " + message, Toast.LENGTH_LONG).show();
         finish();
     }
@@ -289,30 +343,32 @@ public class MainActivity extends AppCompatActivity {
 
     private class ConnectedThread extends Thread {
 
-        private boolean isConnected;
         private final InputStream mmInStream;
         private final OutputStream mmOutStream;
         private final int MESSAGE;
         private BluetoothSocket btSocket = null;
         private final String position;
 
-        public ConnectedThread(BluetoothDevice device, int message, String p) throws IOException {
+        public ConnectedThread(BluetoothDevice device, int message, String p) throws Exception {
             InputStream tmpIn = null;
             OutputStream tmpOut = null;
             MESSAGE = message;
             position = p;
 
-            isConnected = false;
+            boolean isConnected = false;
             //Create Bluetooth Socket
 
             try {
                 btSocket = createBluetoothSocket(device);
             } catch (IOException e) {
                 errorExit("In onResume() and socket create failed: " + e.getMessage() + ".");
+            } catch (Exception e) {
+                errorExit("In onResume() and BT_SCAN permission not granted: " + e.getMessage() + ".");
             }
 
             // Discovery is resource intensive.  Make sure it isn't going on
             // when you attempt to connect and pass your message.
+
             btAdapter.cancelDiscovery();
 
             if (!connect()) {
@@ -337,7 +393,7 @@ public class MainActivity extends AppCompatActivity {
 
         }
 
-        public boolean connect(){
+        public boolean connect() {
 
             // Establish the connection.  This will block until it connects.
             Log.d(TAG, "...Connecting...");
@@ -355,6 +411,8 @@ public class MainActivity extends AppCompatActivity {
                 } catch (IOException e2) {
                     errorExit("In onResume() and unable to close socket during connection failure" + e2.getMessage() + ".");
                 }
+            } catch (Exception e) {
+                e.printStackTrace();
             }
             return false;
         }
@@ -368,9 +426,9 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     //Log.d(TAG, "in ConnectedThread, " + MESSAGE + ", reading buffer ");
                     // Read from the InputStream
-                    bytes = mmInStream.read(buffer);        // Get number of bytes and message in "buffer"
+                    bytes = mmInStream.read(buffer, 0, 200);        // Get number of bytes and message in "buffer"
                     //Log.d(TAG, "Bytes Read: " + bytes);
-                    h.obtainMessage(MESSAGE, bytes, -1, buffer).sendToTarget();     // Send to message queue Handler
+                    queueMessageHandler.obtainMessage(MESSAGE, bytes, -1, buffer).sendToTarget();     // Send to message queue Handler in main thread
                 } catch (IOException e) {
                     break;
                 }
@@ -405,6 +463,7 @@ public class MainActivity extends AppCompatActivity {
             //Log.d(TAG, "BufLen: " + bufferLen);
             if (buffer[0] != 0x55){
                 //Log.d(TAG, "Start byte not found, going ahead");
+                //The first element of the buffer is discarded
                 bufferLen -= 1;
                 System.arraycopy(buffer, 1, buffer, 0, bufferLen);
                 continue;
@@ -416,18 +475,18 @@ public class MainActivity extends AppCompatActivity {
                 String processed = String.format(Locale.ITALIAN, "%3.2f +/- %3.2f", getData(id), getStdDev(id));
                 tv.setText(processed);
             }
-
+            //TODO: the following lines should be moved into the above if structure.
             //Log.d(TAG, "Moving ahead by 11");
             bufferLen -= 11;
             System.arraycopy(buffer, 11, buffer, 0, bufferLen);
         }
     }
 
-    private static class smoothData {
+   /* private static class smoothData {
 
         private float[] angleBuffer;
         private int pos;
-        private int k;
+        private final int k;
         private float avg;
         private float sum;
         private float dev;
@@ -462,7 +521,7 @@ public class MainActivity extends AppCompatActivity {
 
         public float standardDev(float[] x, float xm, int avgLen){
             float sDev = 0;
-            int i = 0;
+            int i;
 
             for (i = 0; i < avgLen; i++)
                 sDev += (x[i] - xm) * (x[i] - xm);
@@ -473,7 +532,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
     }
-
+*/
     //C functions
 
     static {
