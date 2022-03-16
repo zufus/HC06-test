@@ -35,10 +35,10 @@ witMotion *dataProcessor[2];
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_skylabmodels_hc06_1test_MainActivity_createDataProcessingObjects(JNIEnv *env, jobject thiz){
+Java_com_skylabmodels_hc06_1test_MainActivity_createDataProcessingObjects(JNIEnv *env, jobject thiz, jint l){
 
-    dataProcessor[ELEVATOR] = new witMotion(16);
-    dataProcessor[WING]     = new witMotion(16);
+    dataProcessor[ELEVATOR] = new witMotion(l);
+    dataProcessor[WING]     = new witMotion(l);
 }
 
 extern "C"
@@ -76,6 +76,12 @@ Java_com_skylabmodels_hc06_1test_MainActivity_getStdDev(JNIEnv *env, jobject thi
 }
 
 extern "C"
+JNIEXPORT jfloat JNICALL
+Java_com_skylabmodels_hc06_1test_MainActivity_getAngle(JNIEnv *env, jobject thiz, jint id){
+    return dataProcessor[id]->getAngle();
+}
+
+extern "C"
 JNIEXPORT void JNICALL
 Java_com_skylabmodels_hc06_1test_MainActivity_deleteDataProcessingObjects(JNIEnv *env, jobject thiz){
 
@@ -109,7 +115,7 @@ Java_com_skylabmodels_hc06_1test_MainActivity_processData(JNIEnv *env, jobject t
     memcpy(bufferData, cData, bufferLen);
     memcpy(&Angle, &bufferData[2], 8);
 
-    auto angle = (float) Angle.Angle[0] / 32768.0 * 180;
+    auto angle = (float) Angle.Angle[1] / 32768.0 * 180;
 
     pos = mobileAvg(angleBuffer, &sum, pos, avgLen, angle, &avg, &dev);
 

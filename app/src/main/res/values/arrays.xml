@@ -1,0 +1,49 @@
+<resources>
+    <!-- Reply Preference -->
+    <string-array name="reply_entries">
+        <item>Reply</item>
+        <item>Reply to all</item>
+    </string-array>
+
+    <string-array name="reply_values">
+        <item>reply</item>
+        <item>reply_all</item>
+    </string-array>
+
+    <string-array name="return_rate_values">
+        <item>0x02</item>
+        <item>0x03</item>
+        <item>0x04</item>
+        <item>0x05</item>
+        <item>0x06</item>
+        <item>0x07</item>
+        <item>0x09</item>
+    </string-array>
+
+    <string-array name="return_rate_entries">
+        <item>0.5 Hz</item>
+        <item>1 Hz</item>
+        <item>2 Hz</item>
+        <item>5 Hz</item>
+        <item>10 Hz</item>
+        <item>20 Hz</item>
+        <item>100 Hz</item>
+    </string-array>
+
+    <string-array name="bandwidth_values">
+        <item>0x06</item>
+        <item>0x05</item>
+        <item>0x04</item>
+        <item>0x03</item>
+        <item>0x02</item>
+    </string-array>
+
+    <string-array name="bandwidth_entries">
+        <item>5 Hz</item>
+        <item>10 Hz</item>
+        <item>20 Hz</item>
+        <item>42 Hz</item>
+        <item>98 Hz</item>
+    </string-array>
+
+</resources>

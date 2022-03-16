@@ -143,7 +143,7 @@ class witMotion {
     //struct SLonLat 		stcLonLat;
     //struct SGPSV 		stcGPSV;
 
-    char dataString[256];
+    char dataString[2000];
     int k;
 
     float *angleBuffer;
@@ -165,6 +165,10 @@ public:
 
     float getAverage();
     float getStdDev();
+    float getAngle();
+
+
+
 };
 
 

@@ -5,8 +5,11 @@
     <!-- "Mark Favorite", should appear as action button if possible -->
 
     <!-- Settings, should always be in the overflow -->
-    <item android:id="@+id/action_settings"
+    <item android:id="@+id/action_select_sensors"
         android:title="@string/action_settings"
         app:showAsAction="never"/>
 
+    <item android:id="@+id/action_select_version"
+        android:title="@string/version"
+        app:showAsAction="never"/>
 </menu>

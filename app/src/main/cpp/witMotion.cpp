@@ -31,7 +31,10 @@ void witMotion::readAngleFromSerialData(const char *ucData) {
         __android_log_print(ANDROID_LOG_DEBUG, TAG,
                         "In readAngleFromSerialData, k: %d" , k);
     this->k++;
-    this->stcAngle.Angle[0] = (short) (ucData[3]<<8 | ucData[2]);
+    //for (int i = 0; i < 3; i++){
+    //    this->stcAngle.Angle[i] = (short) (ucData[2*i+1]<<8 | ucData[2*i]);
+    //}
+
     if (HC06_DEBUG)
         __android_log_print(ANDROID_LOG_DEBUG, TAG,
                         "In readAngleFromSerialData, data copied, k: %d" , k);
@@ -118,4 +121,8 @@ float witMotion::getStdDev() {
     return this->dev;
 }
 
+float witMotion::getAngle() {
+    return (float) this->stcAngle.Angle[1] / 32768 * 180;
+
+}
 

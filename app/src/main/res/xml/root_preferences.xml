@@ -1,0 +1,59 @@
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory app:title="@string/sensors_header"
+        app:summary="@string/sensor_summary">
+
+
+        <ListPreference
+            app:key="wing"
+            app:defaultValue="0"
+            app:title="@string/wing_device_title"
+            app:useSimpleSummaryProvider="true" />
+
+        <ListPreference
+            app:key="elevator"
+            app:defaultValue="0"
+            app:title="@string/elevator_device_title"
+            app:useSimpleSummaryProvider="true" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/bt_config_header">
+        <SwitchPreferenceCompat
+            app:key="averages"
+            app:summaryOff="@string/average_summary_off"
+            app:summaryOn="@string/average_summary_on"
+            app:title="@string/average_title" />
+
+        <ListPreference
+            app:key="return_rate"
+            app:defaultValue="0x07"
+            app:title="@string/refresh_rate"
+            app:summary="@string/return_rate_summary"
+            app:useSimpleSummaryProvider="false"
+            app:entries="@array/return_rate_entries"
+            app:entryValues="@array/return_rate_values"/>
+
+        <ListPreference
+            app:key="bandwidth"
+            app:defaultValue="0x06"
+            app:title="@string/bandwidth"
+            app:summary="@string/bandwidth_summary"
+            app:useSimpleSummaryProvider="false"
+            app:entries="@array/bandwidth_entries"
+            app:entryValues="@array/bandwidth_values" />
+
+
+    </PreferenceCategory>
+
+    <PreferenceCategory app:title="@string/theme_header">
+
+        <SwitchPreferenceCompat
+            app:key="theme_dark"
+            app:title="@string/theme_title" />
+
+
+
+    </PreferenceCategory>
+
+</PreferenceScreen>

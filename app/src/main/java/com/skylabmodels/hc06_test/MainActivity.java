@@ -1,14 +1,15 @@
 package com.skylabmodels.hc06_test;
 
-//import static java.lang.StrictMath.abs;
-//import static java.lang.StrictMath.sqrt;
-
 import android.Manifest;
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
@@ -24,12 +25,16 @@ import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
 import androidx.constraintlayout.widget.ConstraintLayout;
-import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import androidx.preference.PreferenceManager;
 
+
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -39,7 +44,17 @@ import java.util.Locale;
 import java.util.UUID;
 
 
-public class MainActivity extends AppCompatActivity {
+//public class MainActivity extends AppCompatActivity
+//        implements ActivityCompat.OnRequestPermissionsResultCallback {
+
+interface zBroadcastListener{
+
+    void updateSwitches(BluetoothDevice d);
+
+}
+
+
+public class MainActivity extends AppCompatActivity implements zBroadcastListener {
 
     Button buttonCalibrateXY, buttonCalibrateZ;
     SwitchCompat switchConnectElevator, switchConnectWing;
@@ -49,73 +64,154 @@ public class MainActivity extends AppCompatActivity {
     ConstraintLayout layout;
     Handler queueMessageHandler;
 
-    private static final String TAG = "bluetooth2";
+    private static final String TAG = "HC-06 Test";
+    private static final String TAG_SP = "Preferences";
     final int RECEIVE_ELEVATOR_MESSAGE = 1;        // Status  for Handler
     final int RECEIVE_WING_MESSAGE = 2;
     final int ELEVATOR = 0;
     final int WING = 1;
+    final String SKYLAB_MODEL_VERSION = BuildConfig.VERSION_NAME;
+
+    final static int PERMISSION_BLUETOOTH = 1;
+    final static int PERMISSION_BLUETOOTH_CONNECT = 2;
+
+    boolean bt_permissions_granted;
 
     private BluetoothAdapter btAdapter = null;
-
-    private ConnectedThread mConnectedThreadWing;
-    private ConnectedThread mConnectedThreadElevator;
+    private SharedPreferences settings;
+    private ConnectedThread mWing;
+    private ConnectedThread mElevator;
 
     // SPP UUID service
     private static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 
-    // MAC-address of Bluetooth module (you must edit this line)
 
-    //private static final String addressSensorElevator = "00:0C:BF:18:3F:01";
-    private static final String addressSensorElevator = "20:21:01:12:32:11";
-    private static final String addressSensorWing = "20:21:01:12:27:63";
+    private static String addressSensorWing;
+    private static String addressSensorElevator;
 
-    private static final byte[] msgCalXY = {(byte) 0xFF, (byte) 0xAA, (byte) 0x67};
+    private static final byte[] msgCalXY     = {(byte) 0xFF, (byte) 0xAA, (byte) 0x67};
+    private static final byte[] msgSetRate   = {(byte) 0xFF, (byte) 0xAA, (byte) 0x03, (byte) 0x07};
+    private static final byte[] msgSendCmd   = {(byte) 0xFF, (byte) 0xAA, (byte) 0x69, (byte) 0x88, (byte) 0xb5};
+    private static final byte[] prefixBW     = {(byte) 0xFF, (byte) 0xAA, (byte) 0x1f};
+    private static final byte[] prefixRrate  = {(byte) 0xFF, (byte) 0xAA, (byte) 0x03};
+    private static final byte[] msgSave      = {(byte) 0xFF, (byte) 0xAA, (byte) 0x00, (byte) 0x00, (byte) 0x00};
+    private static final byte suffix = (byte) 0x00;
     //private static final byte[] msgCalZ = {(byte) 0xFF, (byte) 0xAA, (byte) 0x52};
 
-    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+
+    //@RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.actions, menu);
-        //MenuItem settingsItem = menu.findItem(R.id.action_settings);
         return super.onCreateOptionsMenu(menu);
     }
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        if (item.getItemId() == R.id.action_settings) {
+        if (item.getItemId() == R.id.action_select_sensors) {
             // User chose the "Settings" item, show the app settings UI...
-            Log.d(TAG, "Preferences setting");
-            return true;
+            Intent intent = new Intent(this, SettingsActivity.class);
+            startActivity(intent);
+            Log.d(TAG, "Pressed Settings");
+        }
+
+        if (item.getItemId() == R.id.action_select_version) {
+            Log.d(TAG, "Menu Pressed Select Version");
+            Toast.makeText(getBaseContext(), "Ramingo version: " + BuildConfig.VERSION_NAME, Toast.LENGTH_LONG).show();
         }
 
         return super.onOptionsItemSelected(item);
     }
 
+    BroadcastReceiver btReceiver = new mBluetoothReceiver();
+
+
+    IntentFilter filter1 = new IntentFilter(BluetoothDevice.ACTION_ACL_CONNECTED);
+    IntentFilter filter2 = new IntentFilter(BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED);
+    IntentFilter filter3 = new IntentFilter(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+
     @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                                           int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        switch (requestCode) {
-            case 1:
+        if (requestCode == PERMISSION_BLUETOOTH) {
                 // If request is cancelled, the result arrays are empty.
                 if (grantResults.length > 0 &&
                         grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-
-                    Log.d("MainActivity", "Permission approved");
-                } else {
-                    Log.d("MainActivity", "Error getting permission");
+                    // Permission is granted. Continue the action or workflow
+                    // in your app.
+                    Log.d(TAG, "in onRequestPermissionResults() " + "BLUETOOTH" +
+                            " permission granted");
+                }  else {
+                    // Explain to the user that the feature is unavailable because
+                    // the features requires a permission that the user has denied.
+                    // At the same time, respect the user's decision. Don't link to
+                    // system settings in an effort to convince the user to change
+                    // their decision.
+                    Log.d(TAG, "in onRequestPermissionResults() " + "BLUETOOTH" +
+                            " permission NOT granted");
                 }
-                return;
         }
-
+        // Other 'case' lines to check for other
+        // permissions this app might request.
     }
 
+
+
+    private final ActivityResultLauncher<String> requestPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestPermission(), isGranted -> {
+                if (isGranted) {
+                    // Permission is granted. Continue the action or workflow in your
+                    // app.
+
+                    bt_permissions_granted = true;
+                } else {
+                    // Explain to the user that the feature is unavailable because the
+                    // features requires a permission that the user has denied. At the
+                    // same time, respect the user's decision. Don't link to system
+                    // settings in an effort to convince the user to change their
+                    // decision.
+                    bt_permissions_granted = false;
+                    Toast.makeText(getBaseContext(), "permissions not granted, app cannot " +
+                            "continue", Toast.LENGTH_LONG).show();
+                }
+            });
+
+
+
+    public void updateSwitches(BluetoothDevice d) {
+        String address =  d.getAddress();
+        Log.d(TAG, "in updateSwitches(): called by device " + address);
+
+        if (address.equals(addressSensorElevator) && switchConnectElevator.isChecked()){
+            Toast.makeText(getBaseContext(), "Elevator Sensor Connection Lost",
+                    Toast.LENGTH_LONG).show();
+            mElevator.isConnected = false;
+            mElevator.cancel();
+            switchConnectElevator.setChecked(false);
+        }
+
+        if (address.equals(addressSensorWing) && switchConnectWing.isChecked()){
+            Toast.makeText(getBaseContext(), "Wing Sensor Connection Lost",
+                    Toast.LENGTH_LONG).show();
+            mWing.isConnected = false;
+            mWing.cancel();
+            switchConnectWing.setChecked(false);
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.S)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         this.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        registerReceiver(btReceiver, filter1);
+        registerReceiver(btReceiver, filter2);
+        registerReceiver(btReceiver, filter3);
 
         // Use this check to determine whether Bluetooth classic is supported on the device.
         // Then you can selectively disable BLE-related features.
@@ -124,23 +220,26 @@ public class MainActivity extends AppCompatActivity {
             finish();
         }
 
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-            // TODO: Consider calling
-            //    ActivityCompat#requestPermissions
-            // here to request the missing permissions, and then overriding
-            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-            //                                          int[] grantResults)
-            // to handle the case where the user grants the permission. See the documentation
-            // for ActivityCompat#requestPermissions for more details.
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH_CONNECT},
-                    1);
-            //return;
-        }
+
+        // Register the permissions callback, which handles the user's response to the
+        // system permissions dialog. Save the return value, an instance of
+        // ActivityResultLauncher, as an instance variable.
+
+        settings = PreferenceManager.getDefaultSharedPreferences(this);
+
+
+        addressSensorWing = settings.getString("wing", "0");
+        Log.d(TAG_SP, "In onCreate()... Wing Sensor address: " + addressSensorWing);
+        addressSensorElevator = settings.getString("elevator", "0");
+        Log.d(TAG_SP, "In onCreate()... Elevator Sensor address: " + addressSensorElevator);
+
+        android.content.Context c = getBaseContext();
+        Log.d(TAG, "context is" + c.toString());
 
         // Create interface
         setContentView(R.layout.activity_main);
 
-        androidx.appcompat.widget.Toolbar toolbar = (androidx.appcompat.widget.Toolbar) findViewById(R.id.toolbar);
+        androidx.appcompat.widget.Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
         buttonCalibrateXY = findViewById(R.id.buttonCalibrateXY);
@@ -158,38 +257,60 @@ public class MainActivity extends AppCompatActivity {
 
         // Assign callbacks to all the switches/buttons
         buttonCalibrateXY.setOnClickListener(v -> {
-            if (mConnectedThreadWing != null) {
+            if (!switchConnectElevator.isChecked() && !switchConnectWing.isChecked()) {
+                Toast.makeText(getBaseContext(), "No sensor selected. Please connect at least" +
+                        "a sensor first", Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (mWing != null) {
                 Toast.makeText(getBaseContext(), "Wait for Wing sensor calibration", Toast.LENGTH_SHORT).show();
-                mConnectedThreadWing.write(msgCalXY);
+                mWing.write(msgCalXY);
             }
-            if (mConnectedThreadElevator != null) {
+            if (mElevator != null) {
                 Toast.makeText(getBaseContext(), "Wait for Elevator calibration", Toast.LENGTH_SHORT).show();
-                mConnectedThreadElevator.write(msgCalXY);
+                mElevator.write(msgCalXY);
             }
-
         });
 
         buttonCalibrateZ.setOnClickListener(v -> Toast.makeText(getBaseContext(), "TODO: change poll rate", Toast.LENGTH_SHORT).show());
 
-        switchConnectElevator.setOnCheckedChangeListener((compoundButton, b) -> {
-            if (b)
-                connectDevice(btAdapter.getRemoteDevice(addressSensorElevator),
-                        RECEIVE_ELEVATOR_MESSAGE, "Elevator");
-            else if (mConnectedThreadElevator != null)
-                mConnectedThreadElevator.cancel();
-
+        switchConnectElevator.setOnCheckedChangeListener((compoundButton, isChecked) -> {
+            if (isChecked) {
+                addressSensorElevator = settings.getString("elevator", "0");
+                try {
+                    Log.d(TAG, "Elevator Switch activated. Connecting to " +
+                            "//" + btAdapter.getRemoteDevice(addressSensorElevator).toString());
+                    connectDevice(btAdapter.getRemoteDevice(addressSensorElevator), RECEIVE_ELEVATOR_MESSAGE, "Elevator");
+                } catch (IllegalArgumentException e) {
+                    switchConnectElevator.setChecked(false);
+                    Toast.makeText(getBaseContext(), "No Sensor Associated. Please set one in the settings menu", Toast.LENGTH_SHORT).show();
+                    Log.d(TAG, "no sensor associated");
+                }
+            } else if (mElevator != null)
+                mElevator.cancel();
+                //mElevator = null;
         });
 
-        switchConnectWing.setOnCheckedChangeListener((compoundButton, b) -> {
-            if (b)
-                connectDevice(btAdapter.getRemoteDevice(addressSensorWing),
-                        RECEIVE_WING_MESSAGE, "Wing");
-            else if (mConnectedThreadWing != null)
-                mConnectedThreadWing.cancel();
+        switchConnectWing.setOnCheckedChangeListener((compoundButton, isChecked) -> {
+            if (isChecked) {
+                addressSensorWing = settings.getString("wing", "0");
+                try {
+                    Log.d(TAG, "Wing Switch activated. Connecting to " +
+                            "//" + btAdapter.getRemoteDevice(addressSensorWing).toString());
+                    connectDevice(btAdapter.getRemoteDevice(addressSensorWing), RECEIVE_WING_MESSAGE, "Wing");
+
+                } catch (IllegalArgumentException e) {
+                    switchConnectWing.setChecked(false);
+                    Toast.makeText(getBaseContext(), "No Sensor Associated. Please set one in the settings menu", Toast.LENGTH_SHORT).show();
+                    Log.d(TAG, "no sensor associated");
+                }
+            } else if (mWing != null)
+                mWing.cancel();
+                //mWing = null;
         });
 
         // Create processing data objects
-        createDataProcessingObjects();
+        createDataProcessingObjects(16);
 
         // Create an handle to process the data received by the sensors
 
@@ -207,7 +328,7 @@ public class MainActivity extends AppCompatActivity {
                 default:
                     break;
             }
-            textViewResult.setText(String.format(Locale.ITALIAN, "%3.2f", getData(WING) - getData(ELEVATOR)));
+            textViewResult.setText(String.format(Locale.ITALIAN, "%3.1f", getAngle(ELEVATOR) - getAngle(WING)));
             return true;
         });
 
@@ -215,43 +336,72 @@ public class MainActivity extends AppCompatActivity {
         btAdapter = BluetoothAdapter.getDefaultAdapter();
         checkBTState();
 
-
         // Done
 
     }
 
-    private BluetoothSocket createBluetoothSocket(BluetoothDevice device) throws Exception {
+    @RequiresApi(api = Build.VERSION_CODES.S)
+    private BluetoothSocket createBluetoothSocket(BluetoothDevice device) {
 
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
-            // TODO: Consider calling
-            //    ActivityCompat#requestPermissions
-            // here to request the missing permissions, and then overriding
-            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-            //                                          int[] grantResults)
-            // to handle the case where the user grants the permission. See the documentation
-            // for ActivityCompat#requestPermissions for more details.
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH},
-                    1);
-        }
 
         try {
-            final Method m = device.getClass().getMethod("createInsecureRfcommSocketToServiceRecord", UUID.class);
+            final Method m = device.getClass().getMethod("createRfcommSocketToServiceRecord", UUID.class);
             return (BluetoothSocket) m.invoke(device, MY_UUID);
         } catch (Exception e) {
-            Log.e(TAG, "Could not create Insecure RFComm Connection", e);
+            Log.e(TAG, "Could not create RFComm Connection", e);
+            return null;
         }
 
-
-        return device.createRfcommSocketToServiceRecord(MY_UUID);
     }
 
 
+    @RequiresApi(api = Build.VERSION_CODES.S)
     public void connectDevice(BluetoothDevice device, int m, String s) {
         Log.d(TAG, "...trying connection to " + s);
+        String bwPreference = settings.getString("bandwidth", "0x07");
+        String rrate = settings.getString("return_rate", "0x06");
+
         if (s.equals("Elevator")) {
             try {
-                mConnectedThreadElevator = new ConnectedThread(device, m, s);
-                mConnectedThreadElevator.start();
+                mElevator = new ConnectedThread(device, m, s);
+                mElevator.start();
+
+
+                Log.d(TAG, "Setting Bandwidth " + bwPreference);
+
+
+                mElevator.write(msgSendCmd);
+
+                byte command = (byte) Integer.decode(bwPreference).byteValue();
+                byte [] msgBW = new byte[5];
+                try {
+                    msgBW = (byte[]) mElevator.create_command(prefixBW, command, suffix);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+                mElevator.write(msgBW);
+                mElevator.write(msgSave);
+
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+
+                byte [] msgRR = new byte[5];
+                //mElevator.write(msgSendCmd);
+                command = Integer.decode(rrate).byteValue();
+                try {
+                    msgRR = mElevator.create_command(prefixRrate, command, suffix);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+                mElevator.write(msgRR);
+                mElevator.write(msgSave);
+
+
             } catch (IOException e) {
                 Log.d(TAG, "... in connectDevice(), thread creation failed");
                 switchConnectElevator.setChecked(false);
@@ -259,15 +409,56 @@ public class MainActivity extends AppCompatActivity {
                 Log.d(TAG, "... BLUETOOTH_SCAN permission not granted");
             }
 
-        } else {
+        } else if (s.equals("Wing")) {
             try {
-                mConnectedThreadWing = new ConnectedThread(device, m, s);
-                mConnectedThreadWing.start();
+                mWing = new ConnectedThread(device, m, s);
+
+                mWing.start();
+
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+
+                mWing.write(msgSendCmd);
+                byte command = (byte) Integer.decode(bwPreference).byteValue();
+                byte [] msg = new byte[5];
+                try {
+                    msg = (byte[]) mWing.create_command(prefixBW, command, suffix);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+
+                mWing.write(msg);
+                mWing.write(msgSave);
+
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+
+                mWing.write(msgSendCmd);
+                command = Integer.decode(rrate).byteValue();
+                try {
+                    msg = mWing.create_command(prefixRrate, command, suffix);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+
+                mWing.write(msg);
+                mWing.write(msgSave);
+
+
+
             } catch (IOException e) {
                 Log.d(TAG, "... in connectDevice(), thread creation failed");
                 switchConnectWing.setChecked(false);
             } catch (Exception e) {
-                Log.d(TAG, "... BLUETOOTH_SCAN permission not granted");
+                Log.d(TAG, "in connectDevice(): " + e);
             }
 
 
@@ -275,18 +466,37 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+    }
+
+
+    @RequiresApi(api = Build.VERSION_CODES.S)
+    @Override
     public void onResume() {
         super.onResume();
-        Log.d(TAG, "...In onPause()...");
+        Log.d(TAG, "...In onResume()...");
 
-        if (mConnectedThreadElevator != null) {
-            Log.d(TAG, "...closing Elevator Socket");
-            mConnectedThreadElevator.connect();
+        addressSensorWing = settings.getString("wing", "0");
+        Log.d(TAG_SP, "In onResume()... Wing Sensor address: " + addressSensorWing);
+        addressSensorElevator = settings.getString("elevator", "0");
+        Log.d(TAG_SP, "In onResume()... Elevator Sensor address: " + addressSensorElevator);
+
+        resetData(WING, 16);
+        resetData(ELEVATOR, 16);
+
+        // TODO : Modify and reconnect only if the devices were connected
+        if (mElevator != null) {
+            Log.d(TAG, "...reconnecting Elevator Socket");
+            mElevator.connect();
         }
 
-        if (mConnectedThreadWing != null) {
-            Log.d(TAG, "...closing Wing Socket");
-            mConnectedThreadWing.connect();
+        if (mWing != null) {
+            Log.d(TAG, "...reconnecting Wing Socket");
+            //mWing.connect();
+
+
+
         }
 
     }
@@ -297,17 +507,20 @@ public class MainActivity extends AppCompatActivity {
 
         Log.d(TAG, "...In onPause()...");
 
-        if (mConnectedThreadElevator != null) {
+        if (mElevator != null) {
             Log.d(TAG, "...closing Elevator Socket");
-            mConnectedThreadElevator.cancel();
+            mElevator.cancel();
             switchConnectWing.setChecked(false);
         }
 
-        if (mConnectedThreadWing != null) {
+        /*
+        if (mWing != null) {
             Log.d(TAG, "...closing Wing Socket");
-            mConnectedThreadWing.cancel();
+            mWing.cancel();
             switchConnectWing.setChecked(false);
         }
+        */
+
     }
 
     private void checkBTState() {
@@ -348,28 +561,33 @@ public class MainActivity extends AppCompatActivity {
         private final int MESSAGE;
         private BluetoothSocket btSocket = null;
         private final String position;
+        boolean isConnected, stop;
 
+
+        @RequiresApi(api = Build.VERSION_CODES.S)
         public ConnectedThread(BluetoothDevice device, int message, String p) throws Exception {
             InputStream tmpIn = null;
             OutputStream tmpOut = null;
             MESSAGE = message;
             position = p;
 
-            boolean isConnected = false;
+
             //Create Bluetooth Socket
 
+
             try {
+                Log.d(TAG, "in ConnectionThread(): trying to create BT Socket");
                 btSocket = createBluetoothSocket(device);
-            } catch (IOException e) {
-                errorExit("In onResume() and socket create failed: " + e.getMessage() + ".");
             } catch (Exception e) {
-                errorExit("In onResume() and BT_SCAN permission not granted: " + e.getMessage() + ".");
+                errorExit("in Connected Thread: " + e.getMessage() + ".");
+                Log.d(TAG, "in Connected Thread:" + e);
             }
 
             // Discovery is resource intensive.  Make sure it isn't going on
             // when you attempt to connect and pass your message.
 
-            btAdapter.cancelDiscovery();
+
+            //btAdapter.cancelDiscovery();
 
             if (!connect()) {
                 throw new IOException("Connect failed");
@@ -377,30 +595,45 @@ public class MainActivity extends AppCompatActivity {
             // Create a data stream so we can talk to server.
             Log.d(TAG, "...Create " + position + " Socket...");
 
-            // Get the input and output streams, using temp objects because
-            // member streams are final
-            try {
-                tmpIn = btSocket.getInputStream();
-                tmpOut = btSocket.getOutputStream();
-            } catch (IOException e) {
-                errorExit("In ConnectedThread()" + e.getMessage() + ".");
-            }
-
-            mmInStream = tmpIn;
-            mmOutStream = tmpOut;
-
+            mmInStream = btSocket.getInputStream();
+            mmOutStream = btSocket.getOutputStream();
             isConnected = true;
 
         }
 
+
+        @RequiresApi(api = Build.VERSION_CODES.S)
         public boolean connect() {
 
+            bt_permissions_granted = true;
+            if (ContextCompat.checkSelfPermission(getBaseContext(), Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
+                // TODO: Consider calling
+                //    ActivityCompat#requestPermissions
+                // here to request the missing permissions, and then overriding
+                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                //                                          int[] grantResults)
+                // to handle the case where the user grants the permission. See the documentation
+                // for ActivityCompat#requestPermissions for more details.
+                Log.d(TAG, "in ConnectedThread.connect(): BLUETOOTH permission is not " +
+                        "granted, so we launch the permission");
+                requestPermissionLauncher.launch(Manifest.permission.BLUETOOTH);
+
+            } else {
+                Log.d(TAG, "permission BLUETOOTH is granted, we can proceed!");
+            }
             // Establish the connection.  This will block until it connects.
             Log.d(TAG, "...Connecting...");
+
+            if (!bt_permissions_granted)
+                return false;
+
             try {
                 btSocket.connect();
                 Log.d(TAG, ".... BT Connection to " + position + " ok...");
                 Toast.makeText(getBaseContext(), "Connected to" + position, Toast.LENGTH_LONG).show();
+
+
+                stop = false;
                 return true;
             } catch (IOException e) {
                 try {
@@ -418,50 +651,81 @@ public class MainActivity extends AppCompatActivity {
         }
 
         public void run() {
-            byte[] buffer = new byte[512];  // buffer store for the stream
-            int bytes; // bytes returned from read()
 
+            int bytes_available, bytes; // bytes returned from read()
+
+            stop = false;
             // Keep listening to the InputStream until an exception occurs
-            while (true) {
+            while (!stop) {
+
                 try {
+
+                    this.sleep(50);
                     //Log.d(TAG, "in ConnectedThread, " + MESSAGE + ", reading buffer ");
                     // Read from the InputStream
-                    bytes = mmInStream.read(buffer, 0, 200);        // Get number of bytes and message in "buffer"
-                    //Log.d(TAG, "Bytes Read: " + bytes);
-                    queueMessageHandler.obtainMessage(MESSAGE, bytes, -1, buffer).sendToTarget();     // Send to message queue Handler in main thread
-                } catch (IOException e) {
+                    bytes_available = mmInStream.available();
+                    if (bytes_available > 0) {
+                        byte[] buffer = new byte[bytes_available];  // buffer store for the stream
+                        //bytes = mmInStream.read(buffer, 0, 200);        // Get number of bytes and message in "buffer"
+                        bytes = mmInStream.read(buffer);
+                        //Log.d(TAG, "Bytes Read: " + bytes);
+
+                        queueMessageHandler.obtainMessage(MESSAGE, bytes, -1, buffer).sendToTarget();     // Send to message queue Handler in main thread
+                    }
+
+                } catch (IOException | InterruptedException e) {
+                    Log.d(TAG, "Reading from BT exception: " + e.getMessage());
                     break;
                 }
             }
+            cancel();
+            isConnected = false;
         }
 
         /* Call this from the main activity to send data to the remote device */
+        @RequiresApi(api = Build.VERSION_CODES.O)
         public void write(byte[] msgBuffer) {
             try {
-                mmOutStream.write(msgBuffer);
+                for (byte b : msgBuffer){
+                    Log.d(TAG, "Byte: " + Byte.toUnsignedInt(b));
+                }
+                Log.d(TAG, "Msg: " + msgBuffer.length);
+                mmOutStream.write(msgBuffer, 0, msgBuffer.length);
+
             } catch (IOException e) {
                 Log.d(TAG, "...Error data send: " + e.getMessage() + "...");
             }
         }
 
-        public void cancel () {
+        public void cancel() {
             try {
                 btSocket.close();
+                isConnected = false;
             } catch (IOException e2) {
                 errorExit("From onPause() and failed to close " + position + " socket." + e2.getMessage() + ".");
             }
         }
+
+        private byte[] create_command (byte[] prefix, byte command, byte suffix) throws IOException {
+            ByteArrayOutputStream stream = new ByteArrayOutputStream( );
+            stream.write(prefix);
+            stream.write(command);
+            stream.write(suffix);
+
+            return stream.toByteArray();
+
+        }
+
     }
 
 
-
-    private void processBuffer (int id, byte[] buffer, TextView tv){
+    private void processBuffer(int id, byte[] buffer, TextView tv) {
 
         int bufferLen = buffer.length;
 
         while (bufferLen >= 11) {
             //Log.d(TAG, "BufLen: " + bufferLen);
-            if (buffer[0] != 0x55){
+            if (buffer[0] != 0x55) {
                 //Log.d(TAG, "Start byte not found, going ahead");
                 //The first element of the buffer is discarded
                 bufferLen -= 1;
@@ -472,7 +736,7 @@ public class MainActivity extends AppCompatActivity {
             if (buffer[1] == 0x53) {
                 //Log.d(TAG, "In processData2: Angles value found");
                 handleData(id, Arrays.copyOfRange(buffer, 0, 11));
-                String processed = String.format(Locale.ITALIAN, "%3.2f +/- %3.2f", getData(id), getStdDev(id));
+                String processed = String.format(Locale.ITALIAN, "%3.1f", getAngle(id));
                 tv.setText(processed);
             }
             //TODO: the following lines should be moved into the above if structure.
@@ -482,68 +746,27 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-   /* private static class smoothData {
 
-        private float[] angleBuffer;
-        private int pos;
-        private final int k;
-        private float avg;
-        private float sum;
-        private float dev;
-        private int avgLen;
-
-        public smoothData (int L) {
-            pos = 0;
-            k = 0;
-            avg = 0;
-            sum = 0;
-            dev = 0;
-            avgLen = L;
-
-        }
-
-        public void mobile_average (float d) {
-            if (k > avgLen && (abs(avg - d) > 8*dev))
-                Log.d(TAG, "Ops " + d + "/" + avg + "/" + dev);
-
-            if (k < avgLen)
-                avgLen = k;
-
-            sum += sum - angleBuffer[pos] + d;
-            angleBuffer[pos] = d;
-            avg = sum / avgLen;
-            dev = standardDev(angleBuffer, avg, avgLen);
-
-            pos++;
-            if (pos > avgLen)
-                pos = 0;
-        }
-
-        public float standardDev(float[] x, float xm, int avgLen){
-            float sDev = 0;
-            int i;
-
-            for (i = 0; i < avgLen; i++)
-                sDev += (x[i] - xm) * (x[i] - xm);
-
-            sDev = (float) sqrt(sDev / avgLen);
-            sDev = (sDev > 0.001) ? sDev : (float) 0.001;
-            return sDev;
-        }
-
-    }
-*/
     //C functions
 
     static {
-       System.loadLibrary("hc06_test");
+        System.loadLibrary("hc06_test");
     }
-    public native String processData(byte [] data);
-    public native void createDataProcessingObjects();
+
+    //public native String processData(byte[] data);
+
+    public native void createDataProcessingObjects(int avgLen);
+
     public native void handleData(int id, byte[] data);
+
     public native float getData(int id);
+
     public native float getStdDev(int id);
+
+    public native float getAngle(int id);
+
     public native void resetData(int id, int N);
+
     public native void deleteDataProcessingObjects();
 }
 
